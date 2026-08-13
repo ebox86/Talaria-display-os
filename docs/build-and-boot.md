@@ -29,7 +29,7 @@ CI installs the common Buildroot host tools explicitly, including `diffutils`, `
 
 ## Kernel Pin
 
-The board defconfig pins Linux to `6.12.94` instead of Buildroot's moving latest kernel option. Keep this pinned unless we intentionally validate a kernel update on target hardware.
+The board defconfig pins Linux to `6.12.94` instead of Buildroot's moving latest kernel option. It also sets the toolchain kernel headers to use the same kernel source and declares the headers as the `6.12.x` series. Keep these pinned unless we intentionally validate a kernel update on target hardware.
 
 ## Build
 
