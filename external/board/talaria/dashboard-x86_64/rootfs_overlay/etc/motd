@@ -1,0 +1,12 @@
+Talaria Dashboard OS phase 1
+
+This image is for hardware bring-up only:
+- wired DHCP
+- persistent /data/talaria/phase1.log
+- console splash on tty1
+- no browser yet
+
+Inspect:
+- /data/talaria/data-mount.log
+- /data/talaria/network-wait.log
+- /data/talaria/phase1.log

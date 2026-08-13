@@ -1,0 +1,54 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    mkdir -p /data/talaria
+    /usr/bin/talaria-splash diagnostics "Writing phase 1 diagnostics" || true
+
+    if [ -f /etc/talaria/display.conf ]; then
+      . /etc/talaria/display.conf
+    fi
+
+    if [ -f /data/talaria/display.conf ]; then
+      . /data/talaria/display.conf
+    fi
+
+    log=/data/talaria/phase1.log
+    {
+      echo "=== Talaria Dashboard OS phase 1 ==="
+      date
+      echo "hostname: $(hostname)"
+      echo "device_id: ${TALARIA_DEVICE_ID:-unconfigured}"
+      echo "dashboard_url: ${TALARIA_DASHBOARD_URL:-unset}"
+      echo
+      echo "--- interfaces ---"
+      ip addr show 2>/dev/null || ifconfig -a
+      echo
+      echo "--- routes ---"
+      ip route show 2>/dev/null || route -n
+      echo
+      echo "--- block devices ---"
+      lsblk 2>/dev/null || cat /proc/partitions
+      echo
+      echo "--- mounted filesystems ---"
+      mount
+      echo
+      if [ -n "${TALARIA_SERVER_HOST:-}" ]; then
+        echo "--- ping ${TALARIA_SERVER_HOST} ---"
+        ping -c 3 -W 2 "$TALARIA_SERVER_HOST" || true
+      fi
+    } >> "$log" 2>&1
+    /usr/bin/talaria-splash ready "Phase 1 complete; waiting for next stage" || true
+    ;;
+  stop)
+    ;;
+  restart|reload)
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0

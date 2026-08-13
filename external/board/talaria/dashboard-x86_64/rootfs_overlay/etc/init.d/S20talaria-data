@@ -1,0 +1,54 @@
+#!/bin/sh
+
+mount_data_partition() {
+  if grep -q ' /data ' /proc/mounts; then
+    return 0
+  fi
+
+  mkdir -p /data
+
+  for candidate in \
+    /dev/disk/by-label/TALARIA_DATA \
+    /dev/sda2 \
+    /dev/hda2 \
+    /dev/vda2 \
+    /dev/xvda2
+  do
+    if [ -e "$candidate" ]; then
+      mount -t ext4 -o rw,noatime "$candidate" /data && return 0
+    fi
+  done
+
+  return 1
+}
+
+case "$1" in
+  start)
+    /usr/bin/talaria-splash boot "Mounting persistent data" || true
+    if mount_data_partition; then
+      mkdir -p /data/talaria
+      echo "Mounted Talaria data partition." > /data/talaria/data-mount.log
+      /usr/bin/talaria-splash data "Persistent data mounted" || true
+    else
+      echo "Could not mount TALARIA_DATA partition; /data is not persistent." >&2
+      mkdir -p /data/talaria
+      echo "TALARIA_DATA mount failed at $(date)" > /data/talaria/data-mount.log
+      /usr/bin/talaria-splash data "Persistent data unavailable; continuing" || true
+    fi
+    ;;
+  stop)
+    if grep -q ' /data ' /proc/mounts; then
+      umount /data || true
+    fi
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0
