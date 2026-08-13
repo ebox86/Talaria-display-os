@@ -1,4 +1,4 @@
-# Talaria Dashboard OS
+# Talaria Display OS
 
 USB-bootable Buildroot kiosk OS for Talaria dashboard displays.
 
