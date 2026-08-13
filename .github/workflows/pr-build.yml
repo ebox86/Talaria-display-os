@@ -1,0 +1,68 @@
+name: PR Build
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    name: Build bootable image
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read Buildroot version
+        id: buildroot
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < buildroot-version.txt)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Buildroot downloads
+        uses: actions/cache@v5
+        with:
+          path: |
+            dl
+            .build/buildroot-${{ steps.buildroot.outputs.version }}.tar.xz
+          key: ${{ runner.os }}-buildroot-${{ steps.buildroot.outputs.version }}-${{ hashFiles('buildroot-version.txt', 'external/configs/talaria_dashboard_x86_64_defconfig') }}
+          restore-keys: |
+            ${{ runner.os }}-buildroot-${{ steps.buildroot.outputs.version }}-
+            ${{ runner.os }}-buildroot-
+
+      - name: Install host dependencies
+        run: ./scripts/ci-install-deps.sh
+
+      - name: Bootstrap Buildroot
+        run: ./scripts/bootstrap-buildroot.sh
+
+      - name: Build image
+        run: ./scripts/build.sh
+
+      - name: Package test artifacts
+        run: ./scripts/package-artifacts.sh
+
+      - name: Upload image artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: talaria-dashboard-os-pr-${{ github.run_number }}
+          path: artifacts/talaria-dashboard-os-*.tar.gz
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error

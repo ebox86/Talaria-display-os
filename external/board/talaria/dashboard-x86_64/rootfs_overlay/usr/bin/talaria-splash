@@ -1,0 +1,51 @@
+#!/bin/sh
+
+tty="${TALARIA_SPLASH_TTY:-/dev/tty1}"
+state="${1:-boot}"
+message="${2:-Starting Talaria Dashboard OS}"
+
+if [ ! -w "$tty" ]; then
+  exit 0
+fi
+
+draw_frame() {
+  cat > "$tty" <<'EOF'
+[2J[H[?25l
+
+
+          ██████████████████████████████████████████████████
+          ██                                              ██
+          ██     ████████╗ █████╗ ██╗      █████╗        ██
+          ██     ╚══██╔══╝██╔══██╗██║     ██╔══██╗       ██
+          ██        ██║   ███████║██║     ███████║       ██
+          ██        ██║   ██╔══██║██║     ██╔══██║       ██
+          ██        ██║   ██║  ██║███████╗██║  ██║       ██
+          ██        ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝       ██
+          ██                                              ██
+          ██              DASHBOARD OS                    ██
+          ██                                              ██
+          ██████████████████████████████████████████████████
+
+EOF
+}
+
+write_status() {
+  printf '\033[18;11H%-58s' "Status: $message" > "$tty"
+  printf '\033[19;11H%-58s' "Stage:  $state" > "$tty"
+  printf '\033[21;11H%-58s' "This display will continue automatically." > "$tty"
+}
+
+case "$state" in
+  boot|clear)
+    draw_frame
+    write_status
+    ;;
+  hide)
+    printf '\033[2J\033[H\033[?25h' > "$tty"
+    ;;
+  *)
+    write_status
+    ;;
+esac
+
+exit 0

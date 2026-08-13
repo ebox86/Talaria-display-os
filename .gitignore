@@ -1,0 +1,20 @@
+.DS_Store
+
+# Buildroot source/cache/output. These are generated or downloaded locally.
+.build/
+output/
+dl/
+
+# Build artifacts.
+artifacts/
+*.img
+*.iso
+*.qcow2
+*.vmdk
+*.tar
+*.tar.gz
+*.tar.xz
+*.sha256
+
+# Local hardware/test notes that may contain machine-specific details.
+hardware-notes/local/

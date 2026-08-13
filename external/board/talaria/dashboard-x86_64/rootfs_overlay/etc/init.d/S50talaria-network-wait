@@ -1,0 +1,40 @@
+#!/bin/sh
+
+log=/data/talaria/network-wait.log
+
+case "$1" in
+  start)
+    mkdir -p /data/talaria
+    echo "Waiting for wired network at $(date)" > "$log"
+    /usr/bin/talaria-splash network "Waiting for wired network" || true
+
+    i=0
+    while [ "$i" -lt 30 ]; do
+      if ip route show default 2>/dev/null | grep -q '^default '; then
+        echo "Default route detected after ${i}s." >> "$log"
+        ip addr show >> "$log" 2>&1 || true
+        ip route show >> "$log" 2>&1 || true
+        /usr/bin/talaria-splash network "Network ready after ${i}s" || true
+        exit 0
+      fi
+      sleep 1
+      i=$((i + 1))
+    done
+
+    echo "No default route after 30s; continuing for diagnostics." >> "$log"
+    ip addr show >> "$log" 2>&1 || true
+    ip route show >> "$log" 2>&1 || true
+    /usr/bin/talaria-splash network "No default route yet; diagnostics continue" || true
+    ;;
+  stop)
+    ;;
+  restart|reload)
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0
