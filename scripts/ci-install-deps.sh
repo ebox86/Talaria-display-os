@@ -15,15 +15,21 @@ sudo apt-get install -y --no-install-recommends \
   bzip2 \
   ca-certificates \
   cpio \
+  curl \
+  diffutils \
   file \
+  findutils \
+  gawk \
   git \
   gzip \
   libelf-dev \
   libncurses-dev \
+  make \
   patch \
   perl \
   python3 \
   rsync \
+  sed \
   tar \
   unzip \
   wget \

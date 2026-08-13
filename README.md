@@ -25,6 +25,7 @@ scripts/
   flash-usb.sh
   package-artifacts.sh
   run-qemu.sh
+  save-defconfig.sh
 external/
   external.desc
   Config.in
@@ -57,6 +58,7 @@ Expected host tools:
 - `patch`
 - `rsync`
 - `file`
+- `diffutils`, `findutils`, `gawk`, `sed`
 - `libelf-dev` on apt-based Linux hosts
 - `wget` or `curl`
 - common archive tools such as `tar`, `xz`, `gzip`, `bzip2`
@@ -72,6 +74,8 @@ buildroot-version.txt
 ```
 
 The initial pin is `2026.05.1`, the current stable bugfix release as of this bootstrap. If browser package compatibility becomes unstable, consider moving to the Buildroot LTS series after the first successful WPE/Cog build.
+
+The Linux kernel is pinned in the board defconfig instead of tracking Buildroot's latest kernel. The current pin is Linux `6.12.94`, a 6.12 longterm release.
 
 ## Build
 
@@ -108,6 +112,20 @@ Package the boot image, manifest, checksums, and test notes with:
 ```
 
 GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run.
+
+## Defconfig Hygiene
+
+After changing Buildroot settings with `menuconfig`, save the minimized external-tree defconfig with:
+
+```sh
+./scripts/save-defconfig.sh
+```
+
+This reloads `talaria_dashboard_x86_64_defconfig` with the Talaria `BR2_EXTERNAL` path and writes the trimmed result back to:
+
+```text
+external/configs/talaria_dashboard_x86_64_defconfig
+```
 
 ## QEMU
 

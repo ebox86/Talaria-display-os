@@ -25,6 +25,12 @@ Use a Linux build host or VM. macOS is fine for editing the repo, but Buildroot 
 
 On apt-based Linux hosts, install `libelf-dev` before building. The x86_64 Linux kernel build uses host-side `objtool`, which needs `gelf.h` from libelf.
 
+CI installs the common Buildroot host tools explicitly, including `diffutils`, `findutils`, `gawk`, `sed`, `curl`, and `wget`.
+
+## Kernel Pin
+
+The board defconfig pins Linux to `6.12.94` instead of Buildroot's moving latest kernel option. Keep this pinned unless we intentionally validate a kernel update on target hardware.
+
 ## Build
 
 ```sh
@@ -53,6 +59,16 @@ artifacts/talaria-dashboard-os-<buildroot-version>-<git-sha>.tar.gz
 ```
 
 The bundle contains the renamed boot image, checksums, build manifest, and test notes.
+
+## Saving Defconfig
+
+After changing Buildroot settings through `menuconfig`, save the minimized external-tree defconfig with:
+
+```sh
+./scripts/save-defconfig.sh
+```
+
+The script writes back to `external/configs/talaria_dashboard_x86_64_defconfig`.
 
 ## GitHub Actions Artifacts
 
