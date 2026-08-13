@@ -42,6 +42,8 @@ Build output:
 
 ```text
 output/images/disk.img
+output/images/boot.img
+output/images/grub.img
 output/images/talaria-dashboard-os-manifest.txt
 output/images/SHA256SUMS
 ```
