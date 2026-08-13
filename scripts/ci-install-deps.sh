@@ -18,6 +18,7 @@ sudo apt-get install -y --no-install-recommends \
   file \
   git \
   gzip \
+  libelf-dev \
   libncurses-dev \
   patch \
   perl \

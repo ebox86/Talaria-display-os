@@ -23,6 +23,8 @@ The image should:
 
 Use a Linux build host or VM. macOS is fine for editing the repo, but Buildroot builds and USB flashing should happen on Linux.
 
+On apt-based Linux hosts, install `libelf-dev` before building. The x86_64 Linux kernel build uses host-side `objtool`, which needs `gelf.h` from libelf.
+
 ## Build
 
 ```sh

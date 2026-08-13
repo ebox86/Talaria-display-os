@@ -57,6 +57,7 @@ Expected host tools:
 - `patch`
 - `rsync`
 - `file`
+- `libelf-dev` on apt-based Linux hosts
 - `wget` or `curl`
 - common archive tools such as `tar`, `xz`, `gzip`, `bzip2`
 
