@@ -1,6 +1,6 @@
 # Build And Boot
 
-This is the Phase 1 build path for a BIOS-bootable Talaria Dashboard OS disk image.
+This is the Phase 1 build path for a BIOS-bootable Talaria Display OS disk image.
 
 ## Goal
 
@@ -44,7 +44,7 @@ Build output:
 output/images/disk.img
 output/images/boot.img
 output/images/grub.img
-output/images/talaria-dashboard-os-manifest.txt
+output/images/talaria-display-os-manifest.txt
 output/images/SHA256SUMS
 ```
 
@@ -57,7 +57,7 @@ To create the same downloadable bundle produced by GitHub Actions:
 Packaged output:
 
 ```text
-artifacts/talaria-dashboard-os-<buildroot-version>-<git-sha>.tar.gz
+artifacts/talaria-display-os-<buildroot-version>-<git-sha>.tar.gz
 ```
 
 The bundle contains the renamed boot image, checksums, build manifest, and test notes.
@@ -70,20 +70,20 @@ After changing Buildroot settings through `menuconfig`, save the minimized exter
 ./scripts/save-defconfig.sh
 ```
 
-The script writes back to `external/configs/talaria_dashboard_x86_64_defconfig`.
+The script writes back to `external/configs/talaria_display_x86_64_defconfig`.
 
 ## GitHub Actions Artifacts
 
 Pull requests run `PR Build` and upload a 7-day test artifact named:
 
 ```text
-talaria-dashboard-os-pr-<run-number>
+talaria-display-os-pr-<run-number>
 ```
 
 Pushes to `main` run `Main Build` and upload a 30-day artifact named:
 
 ```text
-talaria-dashboard-os-main-<run-number>
+talaria-display-os-main-<run-number>
 ```
 
 Download and extract the artifact, then use the included image with QEMU or `scripts/flash-usb.sh`.

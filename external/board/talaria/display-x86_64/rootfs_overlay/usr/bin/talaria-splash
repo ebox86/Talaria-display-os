@@ -2,7 +2,7 @@
 
 tty="${TALARIA_SPLASH_TTY:-/dev/tty1}"
 state="${1:-boot}"
-message="${2:-Starting Talaria Dashboard OS}"
+message="${2:-Starting Talaria Display OS}"
 
 if [ ! -w "$tty" ]; then
   exit 0

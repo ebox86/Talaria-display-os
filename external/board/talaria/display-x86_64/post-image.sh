@@ -10,11 +10,11 @@ fi
 
 git_commit="unknown"
 if command -v git >/dev/null 2>&1; then
-  git_commit="$(git -C "${BR2_EXTERNAL_TALARIA_DASHBOARD_OS_PATH:-.}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  git_commit="$(git -C "${BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH:-.}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 fi
 
-cat > "$images_dir/talaria-dashboard-os-manifest.txt" <<EOF
-Talaria Dashboard OS phase 1 image artifacts
+cat > "$images_dir/talaria-display-os-manifest.txt" <<EOF
+Talaria Display OS phase 1 image artifacts
 Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Git commit: $git_commit
 
@@ -26,7 +26,7 @@ Expected first milestone:
 
 Primary output:
 - disk.img
-- talaria-dashboard-os-manifest.txt
+- talaria-display-os-manifest.txt
 - SHA256SUMS
 
 Next work:
@@ -41,4 +41,4 @@ EOF
   fi
 )
 
-echo "Wrote $images_dir/talaria-dashboard-os-manifest.txt"
+echo "Wrote $images_dir/talaria-display-os-manifest.txt"

@@ -1,8 +1,8 @@
 # Talaria Display OS
 
-USB-bootable Buildroot kiosk OS for Talaria dashboard displays.
+USB-bootable Buildroot kiosk OS for Talaria-managed display endpoints.
 
-This repo is the implementation workspace for the Talaria dashboard appliance proof of concept. It intentionally does not vendor Buildroot or commit generated images/toolchains. The repo owns the Buildroot external tree, Talaria-specific root filesystem overlay, build scripts, and hardware validation notes.
+This repo is the implementation workspace for Talaria display appliances: production dashboards, shop-floor status screens, and digital signage endpoints. It intentionally does not vendor Buildroot or commit generated images/toolchains. The repo owns the Buildroot external tree, Talaria-specific root filesystem overlay, build scripts, and hardware validation notes.
 
 ## Current Scope
 
@@ -12,7 +12,7 @@ Phase 1 is a text/network bring-up image:
 old PC boots USB/rootfs -> console splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-WPE WebKit/Cog is the intended kiosk browser stack, but browser work should start only after a minimal image boots and networks reliably on the oldest target PCs.
+WPE WebKit/Cog is the intended kiosk browser stack for dashboard and signage modes, but browser work should start only after a minimal image boots and networks reliably on the oldest target PCs.
 
 ## Repo Layout
 
@@ -31,10 +31,10 @@ external/
   Config.in
   external.mk
   configs/
-    talaria_dashboard_x86_64_defconfig
+    talaria_display_x86_64_defconfig
   board/
     talaria/
-      dashboard-x86_64/
+      display-x86_64/
         genimage-bios.cfg
         grub-bios.cfg
         rootfs_overlay/
@@ -121,10 +121,10 @@ After changing Buildroot settings with `menuconfig`, save the minimized external
 ./scripts/save-defconfig.sh
 ```
 
-This reloads `talaria_dashboard_x86_64_defconfig` with the Talaria `BR2_EXTERNAL` path and writes the trimmed result back to:
+This reloads `talaria_display_x86_64_defconfig` with the Talaria `BR2_EXTERNAL` path and writes the trimmed result back to:
 
 ```text
-external/configs/talaria_dashboard_x86_64_defconfig
+external/configs/talaria_display_x86_64_defconfig
 ```
 
 ## QEMU

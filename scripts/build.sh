@@ -6,7 +6,7 @@ version="$(tr -d '[:space:]' < "$repo_root/buildroot-version.txt")"
 buildroot_dir="${BUILDROOT_DIR:-$repo_root/.build/buildroot-$version}"
 output_dir="${OUTPUT_DIR:-$repo_root/output}"
 dl_dir="${BR2_DL_DIR:-$repo_root/dl}"
-defconfig="${DEFCONFIG:-talaria_dashboard_x86_64_defconfig}"
+defconfig="${DEFCONFIG:-talaria_display_x86_64_defconfig}"
 
 if [[ ! -d "$buildroot_dir" ]]; then
   echo "Buildroot was not found at $buildroot_dir" >&2
@@ -20,7 +20,7 @@ export BR2_DL_DIR="$dl_dir"
 echo "Configuring $defconfig"
 make -C "$buildroot_dir" O="$output_dir" BR2_EXTERNAL="$repo_root/external" "$defconfig"
 
-echo "Building Talaria Dashboard OS"
+echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"
 
 echo "Build complete. Images are under: $output_dir/images"
