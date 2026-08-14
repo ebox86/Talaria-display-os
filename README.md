@@ -12,7 +12,9 @@ Phase 1 is a text/network bring-up image:
 old PC boots USB/rootfs -> console splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-WPE WebKit/Cog is the intended kiosk browser stack for dashboard and signage modes, but browser work should start only after a minimal image boots and networks reliably on the oldest target PCs.
+Phase 3 adds mode resolution on top of that: the image now decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falls back to `diagnostics` on any invalid or unreachable config, and retries without a reboot. See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
+
+WPE WebKit/Cog is the intended kiosk browser stack for dashboard and signage modes, but browser work should start only after mode resolution is proven on the oldest target PCs — there is currently nothing that consumes a resolved mode yet.
 
 ## Repo Layout
 
@@ -27,6 +29,7 @@ scripts/
   qemu-smoke-test.sh
   run-qemu.sh
   save-defconfig.sh
+  test-mode-resolve.sh
 external/
   external.desc
   Config.in

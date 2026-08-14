@@ -45,9 +45,7 @@ mkdir -p "$target_dir/boot/grub"
 cp -f "$board_dir/grub-bios.cfg" "$target_dir/boot/grub/grub.cfg"
 
 find "$target_dir/etc/init.d" -maxdepth 1 -type f -name 'S*talaria-*' -exec chmod 0755 {} +
-if [[ -f "$target_dir/usr/bin/talaria-splash" ]]; then
-  chmod 0755 "$target_dir/usr/bin/talaria-splash"
-fi
+find "$target_dir/usr/bin" -maxdepth 1 -type f -name 'talaria-*' -exec chmod 0755 {} +
 
 copy_grub_boot_img
 

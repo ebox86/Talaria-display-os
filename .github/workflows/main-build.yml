@@ -29,6 +29,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Test mode-resolve logic
+        run: ./scripts/test-mode-resolve.sh
+
       - name: Read Buildroot version
         id: buildroot
         shell: bash

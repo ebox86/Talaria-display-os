@@ -18,6 +18,7 @@ The image should:
 - mount persistent `/data` from partition 2 labeled `TALARIA_DATA`
 - acquire wired DHCP
 - write diagnostic logs under `/data/talaria`
+- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on any invalid or unreachable config — see [`display-runtime-design.md`](display-runtime-design.md)
 
 ## Build Host
 
@@ -125,11 +126,7 @@ The smoke test captures serial console output to:
 artifacts/qemu-smoke.log
 ```
 
-It passes when the boot log contains:
-
-```text
-TALARIA_PHASE1_READY
-```
+It passes when the boot log contains `TALARIA_PHASE1_READY` and either `TALARIA_MODE_RESOLVED` or `TALARIA_MODE_FALLBACK`.
 
 Expected target logs:
 
@@ -137,7 +134,16 @@ Expected target logs:
 /data/talaria/data-mount.log
 /data/talaria/network-wait.log
 /data/talaria/phase1.log
+/data/talaria/display-mode.log
 ```
+
+To check the mode-resolution logic itself (validation and fallback rules) without a Linux build host, Buildroot, or QEMU:
+
+```sh
+./scripts/test-mode-resolve.sh
+```
+
+This runs `usr/bin/talaria-resolve-mode` directly against temp config files for each mode/fallback case. It does not validate init sequencing or actual boot behavior — that still needs the QEMU smoke test above.
 
 The current splash is console-based and intentionally does not require a framebuffer image viewer or browser stack. Later WPE/Cog work can replace it by launching the kiosk browser over the same display.
 
@@ -171,4 +177,4 @@ The script asks for `YES` before writing.
 - This pass is BIOS-first, not UEFI.
 - Root is currently configured as `/dev/sda1`.
 - Persistent data is currently expected at `/dev/sda2`, with fallback probes for older/QEMU names.
-- No WPE WebKit/Cog browser stack is included yet.
+- No WPE WebKit/Cog browser stack is included yet. Mode resolution runs and logs its decision, but nothing consumes it yet.

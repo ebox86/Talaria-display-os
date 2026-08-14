@@ -41,19 +41,21 @@ timeout --foreground "$timeout_seconds" qemu-system-x86_64 \
 status=$?
 set -e
 
-if grep -q 'TALARIA_PHASE1_READY' "$log_file"; then
-  echo "QEMU smoke test passed. Phase 1 marker found in $log_file"
+if grep -q 'TALARIA_PHASE1_READY' "$log_file" \
+  && grep -Eq 'TALARIA_MODE_RESOLVED|TALARIA_MODE_FALLBACK' "$log_file"; then
+  echo "QEMU smoke test passed. Phase 1 and mode-resolution markers found in $log_file"
   exit 0
 fi
 
-echo "QEMU smoke test did not see TALARIA_PHASE1_READY in $log_file" >&2
+echo "QEMU smoke test did not see the expected markers in $log_file" >&2
+echo "Expected TALARIA_PHASE1_READY and one of TALARIA_MODE_RESOLVED/TALARIA_MODE_FALLBACK." >&2
 echo "--- QEMU log tail ---" >&2
 tail -n 120 "$log_file" >&2 || true
 
 if [[ "$status" -eq 124 ]]; then
-  echo "QEMU timed out before Phase 1 completed." >&2
+  echo "QEMU timed out before boot completed." >&2
 else
-  echo "QEMU exited with status $status before Phase 1 completed." >&2
+  echo "QEMU exited with status $status before boot completed." >&2
 fi
 
 exit 1

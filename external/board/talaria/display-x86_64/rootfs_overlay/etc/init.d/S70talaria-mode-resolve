@@ -1,0 +1,41 @@
+#!/bin/sh
+#
+# Resolve the effective display mode (dashboard/signage/diagnostics) and
+# keep re-resolving on an interval so an operator can drop a corrected
+# /data/talaria/display.conf and recover without a reboot. See
+# docs/display-runtime-design.md.
+
+resolve_interval="${TALARIA_MODE_RESOLVE_INTERVAL:-15}"
+pidfile=/var/run/talaria-mode-resolve.pid
+
+resolve_loop() {
+  while true; do
+    sleep "$resolve_interval"
+    /usr/bin/talaria-resolve-mode
+  done
+}
+
+case "$1" in
+  start)
+    mkdir -p /data/talaria
+    /usr/bin/talaria-resolve-mode
+    resolve_loop &
+    echo $! > "$pidfile"
+    ;;
+  stop)
+    if [ -f "$pidfile" ]; then
+      kill "$(cat "$pidfile")" 2>/dev/null || true
+      rm -f "$pidfile"
+    fi
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0

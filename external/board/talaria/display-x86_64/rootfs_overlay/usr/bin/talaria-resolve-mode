@@ -1,0 +1,111 @@
+#!/bin/sh
+#
+# Resolve the effective Talaria display mode from the baked-in and
+# override config, apply the fallback rules from
+# docs/display-runtime-design.md, and record the result.
+#
+# Single-shot: run once per call. S70talaria-mode-resolve calls this in a
+# retry loop so a corrected /data/talaria/display.conf recovers without a
+# reboot.
+#
+# Paths and the reachability probe are overridable via environment
+# variables so this can be exercised outside the target rootfs, e.g. by
+# scripts/test-mode-resolve.sh:
+#
+#   TALARIA_ETC_CONF     default /etc/talaria/display.conf
+#   TALARIA_DATA_CONF    default /data/talaria/display.conf
+#   TALARIA_STATE_LOG    default /data/talaria/display-mode.log
+#   TALARIA_PING_CMD     default "ping -c 1 -W 2"
+
+etc_conf="${TALARIA_ETC_CONF:-/etc/talaria/display.conf}"
+data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
+state_log="${TALARIA_STATE_LOG:-/data/talaria/display-mode.log}"
+ping_cmd="${TALARIA_PING_CMD:-ping -c 1 -W 2}"
+
+console_status() {
+  if [ -w /dev/console ]; then
+    echo "$1" > /dev/console
+  fi
+}
+
+run_splash() {
+  if command -v talaria-splash >/dev/null 2>&1; then
+    talaria-splash "$1" "$2" || true
+  fi
+}
+
+is_valid_mode() {
+  case "$1" in
+    dashboard|signage|diagnostics) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+is_http_url() {
+  case "$1" in
+    http://*|https://*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Reset before sourcing so a stale value from the caller's environment
+# can't be mistaken for a value that came from config.
+TALARIA_SERVER_HOST=
+TALARIA_DISPLAY_MODE=
+TALARIA_DISPLAY_URL=
+TALARIA_DEVICE_ID=
+
+[ -f "$etc_conf" ] && . "$etc_conf"
+[ -f "$data_conf" ] && . "$data_conf"
+
+configured_mode="${TALARIA_DISPLAY_MODE:-dashboard}"
+device_id="${TALARIA_DEVICE_ID:-unconfigured}"
+display_url="${TALARIA_DISPLAY_URL:-}"
+server_host="${TALARIA_SERVER_HOST:-}"
+
+effective_mode="$configured_mode"
+reason=""
+
+if ! is_valid_mode "$configured_mode"; then
+  effective_mode="diagnostics"
+  reason="invalid TALARIA_DISPLAY_MODE '$configured_mode'"
+elif [ "$configured_mode" != "diagnostics" ]; then
+  if ! is_http_url "$display_url"; then
+    effective_mode="diagnostics"
+    reason="TALARIA_DISPLAY_URL is unset or not http(s)"
+  elif [ -n "$server_host" ] && ! $ping_cmd "$server_host" >/dev/null 2>&1; then
+    effective_mode="diagnostics"
+    reason="cannot reach TALARIA_SERVER_HOST ($server_host)"
+  fi
+fi
+
+mkdir -p "$(dirname "$state_log")" 2>/dev/null
+
+{
+  echo "=== Talaria mode resolution $(date) ==="
+  echo "device_id: $device_id"
+  echo "configured_mode: $configured_mode"
+  echo "effective_mode: $effective_mode"
+  echo "display_url: ${display_url:-unset}"
+  if [ -n "$reason" ]; then
+    echo "fallback_reason: $reason"
+  fi
+  echo
+} >> "$state_log" 2>&1
+
+if [ -n "$reason" ]; then
+  run_splash diagnostics "Fallback: $reason"
+  console_status "TALARIA_MODE_FALLBACK reason=\"$reason\" configured_mode=$configured_mode"
+else
+  case "$effective_mode" in
+    diagnostics)
+      run_splash diagnostics "Diagnostics mode"
+      ;;
+    *)
+      run_splash ready "$effective_mode ready: $display_url (browser launcher not yet implemented)"
+      ;;
+  esac
+  console_status "TALARIA_MODE_RESOLVED mode=$effective_mode url=${display_url:-none}"
+fi
+
+exit 0

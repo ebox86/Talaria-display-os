@@ -2,7 +2,7 @@
 
 Talaria Display OS should treat the screen as a managed Talaria endpoint, not as a dashboard-only device. The same OS image should support production dashboards, digital signage, and local diagnostics without rebuilding the image per use case, and it should degrade to a safe local state whenever the server or configured content is unavailable.
 
-This is a design document. It describes the intended mode model, config contract, and fallback behavior ahead of the runtime code that implements them. Phase 1 (console bring-up, networking, `/data` mount, diagnostics logging) is already implemented under `external/board/talaria/display-x86_64/rootfs_overlay/`. Phase 3 is this design plus the mode-resolution groundwork; the WPE/Cog browser launcher described in [Browser Phase](#browser-phase) is a later phase's implementation work, not part of this PR.
+Phase 1 (console bring-up, networking, `/data` mount, diagnostics logging) and Phase 3's mode resolution described below are both implemented under `external/board/talaria/display-x86_64/rootfs_overlay/`. The WPE/Cog browser launcher described in [Browser Phase](#browser-phase) is still future work — mode resolution today decides and logs the effective mode but has nothing to hand it off to yet.
 
 ## Goals
 
@@ -69,20 +69,22 @@ Mode resolution slots in after the existing Phase 1 init stages, before any brow
 S20talaria-data           mount /data, log result
 S50talaria-network-wait   wait up to 30s for a default route, log result
 S60talaria-phase1         source config, write phase1.log, diagnostics splash
-S7x talaria-mode-resolve  (new) decide effective mode, hand off to launcher
+S70talaria-mode-resolve   decide effective mode, retry loop, hand off to launcher
 S8x talaria-browser       (future) launch WPE/Cog against the resolved target, or
                            stay in diagnostics if resolution failed
 ```
 
-Resolution logic, in order:
+`S70talaria-mode-resolve` is implemented as a thin init wrapper (`etc/init.d/S70talaria-mode-resolve`) around a single-shot resolver (`usr/bin/talaria-resolve-mode`). The wrapper runs the resolver once at `start`, then backgrounds a loop that re-runs it every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15). The resolver itself is pure enough to unit-test on the build host — its config paths and reachability probe are environment-overridable, and `scripts/test-mode-resolve.sh` exercises the cases below without needing Buildroot or QEMU.
+
+Resolution logic, in order (each retry cycle, from scratch):
 
 1. Source `/etc/talaria/display.conf`, then `/data/talaria/display.conf` if present, per the precedence above.
 2. If `TALARIA_DISPLAY_MODE` is not one of `dashboard`, `signage`, `diagnostics` — fall back to `diagnostics`.
 3. If the resolved mode is `dashboard` or `signage` and `TALARIA_DISPLAY_URL` is unset or not a well-formed `http(s)://` URL — fall back to `diagnostics`.
-4. If the resolved mode is `dashboard` or `signage`, probe reachability of `TALARIA_DISPLAY_URL` (or at minimum `TALARIA_SERVER_HOST`) the same way `S60talaria-phase1` already pings the server host — if unreachable, hold in `diagnostics` and keep retrying rather than launching a browser at a dead URL.
-5. Otherwise, hand the resolved mode and URL to the browser launcher.
+4. If the resolved mode is `dashboard` or `signage`, probe reachability of `TALARIA_SERVER_HOST` with `ping -c 1 -W 2` — if unreachable, hold in `diagnostics` and keep retrying rather than launching a browser at a dead URL.
+5. Otherwise, resolve to the configured mode and log it as ready to hand off. No browser launcher exists yet, so today this only updates the splash/log — there's nothing to hand off to.
 
-This keeps `diagnostics` as both a first-class mode an operator can pin a device to, and the automatic result of every failure path above.
+This keeps `diagnostics` as both a first-class mode an operator can pin a device to, and the automatic result of every failure path above. Each resolution — success or fallback — is appended to `/data/talaria/display-mode.log` and echoed to the console as `TALARIA_MODE_RESOLVED mode=<mode> url=<url>` or `TALARIA_MODE_FALLBACK reason="<reason>" configured_mode=<mode>`, which `scripts/qemu-smoke-test.sh` checks for.
 
 ## Fallback Behavior
 
@@ -95,14 +97,14 @@ Fallback to `diagnostics` is triggered by any of:
 - `TALARIA_DISPLAY_URL` unset, malformed, or unreachable for `dashboard`/`signage`.
 - Once the browser launcher exists: the configured URL loads but the browser process crashes or exits unexpectedly.
 
-While in fallback, the device should:
+While in fallback, the device:
 
-- Show a diagnostics screen with device ID, resolved/attempted mode, configured URL, network state, and the specific reason fallback was triggered — not just "error."
-- Keep logging to `/data/talaria` in the same append-friendly style as `phase1.log`, `data-mount.log`, and `network-wait.log`, so a technician can pull logs off the USB stick without a live session.
-- Retry on a fixed interval without requiring a reboot. Each retry re-reads both config files from scratch, so dropping a corrected `/data/talaria/display.conf` and waiting (or restarting the relevant init script, as `first-boot-test.md` already documents for Phase 1) is enough to recover — no reflash.
-- Never hard-fail the boot. A device that can never reach its server should still be a working diagnostics appliance indefinitely, not a device that stops responding.
+- Shows a diagnostics screen (`talaria-splash diagnostics "Fallback: <reason>"`) with the specific reason fallback was triggered — not just "error."
+- Logs to `/data/talaria/display-mode.log` in the same append-friendly style as `phase1.log`, `data-mount.log`, and `network-wait.log`, so a technician can pull logs off the USB stick without a live session.
+- Retries every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15) without requiring a reboot. Each retry re-reads both config files from scratch, so dropping a corrected `/data/talaria/display.conf` is enough to recover on its own within one interval — no manual restart, no reflash. (`S70talaria-mode-resolve restart` still works too, matching the manual-restart workaround `first-boot-test.md` already documents for Phase 1.)
+- Never hard-fails the boot. A device that can never reach its server still runs as a working diagnostics appliance indefinitely, not a device that stops responding.
 
-The exact retry interval and backoff curve are implementation details for the phase that builds the resolver/launcher; this doc only commits to "bounded, automatic, no reboot required."
+Backoff is intentionally flat (fixed interval, not exponential) — a display endpoint recovering from a config fix or a flaky link should come back quickly, and there's no external service being hammered by a `ping` every 15s.
 
 ## Server Contract
 
@@ -119,7 +121,7 @@ A server-assigned mode should follow the same fallback rules as a locally config
 
 ## Browser Phase
 
-Out of scope for this PR; recorded here so mode resolution is designed against the real consumer. The first browser implementation should launch WPE WebKit/Cog against the resolved `TALARIA_DISPLAY_URL`. The launcher should:
+Not yet implemented; recorded here so mode resolution was built against the real consumer. The first browser implementation should launch WPE WebKit/Cog against the resolved `TALARIA_DISPLAY_URL`. The launcher should:
 
 - wait for the mode-resolution stage above to hand off a mode and URL
 - verify `/data` is mounted before assuming any override config applies
