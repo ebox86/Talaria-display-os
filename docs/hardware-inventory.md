@@ -7,7 +7,8 @@ Target fleet is deliberately wide: roughly 2004-2014 era x86_64 workstations, wh
 | ID | Model | Year | CPU | x86_64 | RAM | GPU | GPU Driver Used | NIC | BIOS/UEFI | Monitor | USB Boot | Video Result | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | display-01 | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| candidate-hp-dx2200 | HP Compaq dx2200 Microtower | ~2006 | Celeron D 326-346 or Pentium 4 516/519K/521/524/541 (Socket 775) | **check per unit** — see note below | 2 GB max (DDR2-667, 2 slots) | ATI Radeon Xpress 200 IGP (RS480/RC410, "derived from Radeon X300") | expected `radeon` (already in `linux-video.fragment`) | not yet researched | BIOS-only | untested | untested | untested | not yet tested — spec-sheet only |
+
+Rows above are for units actually in hand and tested. [Researched Candidates](#researched-candidates-not-yet-hands-on-tested) below tracks spec-sheet research on models worth sourcing but not yet tested — promote a candidate to a real row here once a unit is tested.
 
 **GPU Driver Used**: which kernel driver actually bound (`i915`/`radeon`/`nouveau`/`mgag200`/`ast`/`simpledrm`/none) — check with `cat /sys/class/drm/*/device/uevent` or `dmesg | grep -i drm` on the target console.
 
@@ -23,18 +24,24 @@ Target fleet is deliberately wide: roughly 2004-2014 era x86_64 workstations, wh
 - Boot time from power button to userspace.
 - Any firmware warnings.
 
-## Known Candidate: HP Compaq dx2200
+## Researched Candidates (Not Yet Hands-On Tested)
 
-Researched from public spec sheets, not yet hands-on tested — treat as "worth trying," not "confirmed working." If units are on hand, promote this to a real numbered row above once tested.
+Spec-sheet research on models worth sourcing, not confirmed working — "worth trying," not "confirmed." Promote a row to the real fleet table above once an actual unit is tested. `x86_64` status marked "per-unit" means the model shipped with a mix of processors and this image (x86_64-only, no 32-bit fallback) needs a check on every physical unit, not an assumption from the model name:
 
-- **CPU / x86_64 eligibility is per-unit, not guaranteed by model name.** HP sold the dx2200 with a mix of processors: Celeron D 326/331/336/346 all shipped with EM64T (Intel's 64-bit extension) enabled — confirmed. The Pentium 4 519K also has EM64T enabled despite the "K" suffix looking like a cost-reduced part. Not every Pentium 4 5xx-series option in this line is guaranteed 64-bit, though (the 516 in particular is unconfirmed either way). Since this image is x86_64-only (no 32-bit fallback), **check every physical unit individually** before assuming it'll boot the image at all:
-  ```sh
-  grep -o lm /proc/cpuinfo | head -1   # prints "lm" if the CPU supports long mode (64-bit); empty if not
-  ```
-  This is exactly the "32-bit-only machines may not be worth supporting" risk called out in the broader Talaria Display OS plan — the dx2200 line is a real-world example of why that risk is per-unit, not per-model.
-- **GPU**: the ATI Radeon Xpress 200 integrated graphics (RS480/RC410 chipset family) is handled by Linux's legacy `radeon` DRM driver, not `amdgpu` — that's `CONFIG_DRM_RADEON`, already enabled in `linux-video.fragment`. KMS support for this specific IGP had some rough edges in early KMS-era kernels (~2010-2011) but should be solid on the pinned 6.12 kernel. Being derived from the R300 generation (pre-UVD), it shouldn't need external firmware blobs for basic modesetting, unlike some later AMD/Intel GPUs.
-- **RAM ceiling**: 2 GB max (DDR2-667, non-ECC). Tight but workable for a kiosk browser — worth watching during real testing given WPEWebKit's footprint, more than most other constraints here.
-- **NIC**: not yet researched. Confirm chipset and mainline Linux driver before assuming wired DHCP "just works" the way it has on other Phase 1 test units.
+```sh
+grep -o lm /proc/cpuinfo | head -1   # prints "lm" if the CPU supports long mode (64-bit); empty if not
+```
+
+| Model | Era | x86_64 | Chipset / GPU | Expected Driver | RAM Cap | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| HP Compaq dx2200 Microtower | ~2006 | per-unit — Celeron D 326-346 confirmed, P4 519K confirmed, P4 516 unconfirmed | ATI Radeon Xpress 200 (RS480/RC410) | `radeon` | 2 GB | Business line. NIC unresearched. |
+| Dell OptiPlex GX620 | 2005 | per-unit — same P4/Pentium D/Celeron D mix as the dx2200 | Intel 945G, onboard GMA950 (or optional discrete ATI Radeon X600SE) | `i915` onboard, `radeon` if the discrete card is populated | not confirmed | Business line. Prefer confirming onboard GMA950 over the optional discrete card — fewer unknowns. |
+| Dell OptiPlex 755 | 2007-2008 | **yes, uniformly** — Core 2 Duo (e.g. E6550) has no 32-bit-only variants | Intel Q35, onboard GMA3100 | `i915` | 4 GB (8 GB max) | Business line. Meaningfully safer bet than any Pentium 4/Celeron D-era machine — no per-unit CPU check needed. |
+| Dell OptiPlex 760 | 2008-2009 | **yes, uniformly** — Core 2 Duo/Quad | Intel Q45, onboard GMA4500 (or optional discrete ATI HD3450/3470, Nvidia 9300GE) | `i915` onboard | 8 GB max | Business line. Best RAM headroom of any candidate here — most WPEWebKit-friendly. Newest/safest option so far. |
+| Dell Dimension E520 | 2006 | per-unit — Celeron through Core 2 Duo options | Intel G965, onboard GMA X3000 (or discrete ATI X1300 Pro, Nvidia GeForce 7300LE) | `i915` onboard | not confirmed | Consumer line, not business — less representative of the shop-floor reuse case than the OptiPlex models. |
+| Dell Dimension E521 | ~2006 | AMD Athlon 64 X2/Athlon 64/Sempron (Socket AM2) — AMD64 was 64-bit-native for these, less ambiguity than the Intel P4 era | AMD chipset, onboard Nvidia GeForce 6150 LE | `nouveau` | up to 4 GB | Consumer line, AMD-based. First real candidate matching our `nouveau` inclusion, which was otherwise speculative. |
+
+Two things fall out of this pass: Intel's onboard graphics (GMA950/3100/X3000/4500, all `i915`) show up across nearly every model here and have by far the most mature, consistent mainline Linux driver of any vendor in this era — worth weighting selection toward Intel-graphics units when there's a choice, even though `radeon`/`nouveau` coverage exists as a fallback. And the Core 2 Duo generation (OptiPlex 755/760, roughly 2007+) removes the 64-bit-eligibility guesswork entirely, unlike every Pentium 4/Celeron D/early-Athlon-era machine above — if minimizing unknowns matters more than maximizing "how old can we go," that's the era to prioritize sourcing from.
 
 ## Decision Rule
 
