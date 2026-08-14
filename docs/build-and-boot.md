@@ -37,6 +37,8 @@ The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `1536M` to leave room f
 
 The board defconfig pins Linux to `6.12.94` instead of Buildroot's moving latest kernel option. It also sets the toolchain kernel headers to use the same kernel source and declares the headers as the `6.12.x` series. Keep these pinned unless we intentionally validate a kernel update on target hardware.
 
+A config fragment (`board/talaria/display-x86_64/linux-video.fragment`, layered on top via `BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES`) adds broad DRM/framebuffer driver coverage for the wide range of target hardware — see [`display-runtime-design.md`](display-runtime-design.md#target-hardware). It's best-effort; `scripts/build.sh` runs `scripts/verify-kernel-video-config.sh` right after `linux-configure` to catch a wrong symbol before the full build.
+
 ## Build
 
 ```sh

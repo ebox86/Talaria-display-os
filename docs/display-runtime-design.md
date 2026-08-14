@@ -4,6 +4,15 @@ Talaria Display OS should treat the screen as a managed Talaria endpoint, not as
 
 Phase 1 (console bring-up, networking, `/data` mount, diagnostics logging), Phase 3's mode resolution, and Phase 3's browser supervision are all implemented under `external/board/talaria/display-x86_64/rootfs_overlay/`. The one piece that's genuinely unproven is the WPE/Cog Buildroot package wiring itself (see [Browser Phase](#browser-phase)) — it hasn't been validated against a real Buildroot build yet.
 
+## Target Hardware
+
+The fleet is deliberately wide, not a single reference machine: roughly 2004-2014-era x86_64 workstations, whatever decommissioned office/shop-floor PCs are actually on hand. "As compatible as reasonably possible across that spread" is the actual design constraint, not "works on the dev's test box" — see `docs/hardware-inventory.md`, which tracks per-device results as they come in rather than assuming one config fits all of them. Concretely, this shapes:
+
+- **Software GL by default** ([Browser Phase](#browser-phase)) instead of betting on any one GPU vendor's driver working.
+- **A kernel config fragment** (`board/talaria/display-x86_64/linux-video.fragment`) with broad DRM driver coverage for GPUs likely to show up in that era, plus `CONFIG_DRM_SIMPLEDRM`/`CONFIG_FB_VESA` as a generic fallback for whatever isn't specifically covered.
+- **A GRUB `vga=791` boot parameter** ([`grub-bios.cfg`](../external/board/talaria/display-x86_64/grub-bios.cfg)) so even hardware with no chipset-specific driver gets *some* usable video mode for simpledrm to pick up. VBE BIOS behavior varies across this much hardware; this is a reasonable default, not a guarantee — real per-machine results belong in `hardware-inventory.md`.
+- **A visible give-up signal** when the browser genuinely can't render on a given machine ([Browser Phase](#browser-phase)), instead of a silent crash loop behind a stale splash — expect a real fraction of this fleet to hit that path, and the device should still be a working diagnostics appliance when it does.
+
 ## Goals
 
 - Boot unattended on old x86_64 workstations.
@@ -142,6 +151,10 @@ A server-assigned mode should follow the same fallback rules as a locally config
 
 Console markers: `TALARIA_BROWSER_LAUNCH url=<url> pid=<pid>`, `TALARIA_BROWSER_STOPPED mode=<mode>`, `TALARIA_BROWSER_CRASHED target=<url>`. Crash detection deliberately does not use `kill -0` on the browser's pid — a child that exited but hasn't been reaped is a zombie, and `kill -0` on a zombie still succeeds. Each browser is launched inside a small monitor subshell that `wait`s on its own child (the only process allowed to reap it) and drops an exit-marker file when it's gone; the supervisor checks that marker instead.
 
+### Giving up visibly
+
+Given the hardware spread ([Target Hardware](#target-hardware)), some machines will never successfully render — bad or missing DRM driver, an unsupported mode, whatever. The supervisor tracks consecutive crashes against the same target (`TALARIA_BROWSER_MAX_CRASHES`, default 3) and, once that threshold hits, logs `TALARIA_BROWSER_GIVING_UP target=<url> attempts=<n>` once and calls `talaria-splash diagnostics "Browser unavailable after <n> attempts: <url>"` — so the operator sees an explicit failure state instead of a stale "ready" splash sitting over a browser that's silently crash-looping underneath. It keeps retrying afterward (a flaky driver might still recover) rather than giving up permanently; if the browser then stays up for `TALARIA_BROWSER_STABLE_CYCLES` (default 3) consecutive poll cycles, the crash count resets and the give-up signal can fire again later if it degrades again. A target change (new URL, or falling back to diagnostics) also resets the count — a fresh target gets a fresh chance.
+
 The browser command itself is a plain Cog invocation against WPE's DRM/KMS platform backend — no X11, no Wayland compositor — rendering with Mesa's software GL (llvmpipe) by default:
 
 - **DRM/KMS, not X11/Wayland**: consistent with this image staying a minimal appliance runtime; nothing else in it runs a display server.
@@ -149,13 +162,13 @@ The browser command itself is a plain Cog invocation against WPE's DRM/KMS platf
 
 `usr/bin/talaria-browser-supervise` is testable the same way the resolver is: the browser command, poll interval, and state/console paths are all environment-overridable, and `scripts/test-browser-supervise.sh` exercises launch/stop/URL-change/crash-recovery against a fake browser stub without needing WPE/Cog installed.
 
-**What's unproven:** the Buildroot package selections themselves (`external/configs/talaria_display_x86_64_defconfig`) are a best-effort attempt at the `BR2_PACKAGE_WPEWEBKIT`/`COG`/`MESA3D`/DRM symbol names — not verified against an actual Buildroot 2026.05.1 checkout, since no Linux host was available while writing this. `scripts/verify-browser-packages.sh` (wired into `scripts/build.sh`) checks the *resolved* `.config` for these exact symbols right after configuring, so a wrong or renamed symbol fails in seconds instead of after a multi-hour WPEWebKit build — but it can't catch every possible way a from-source WebKit build could fail. Treat the first real Buildroot run as the actual test of this section, not this doc.
+**What's unproven:** the Buildroot package selections themselves (`external/configs/talaria_display_x86_64_defconfig`) and the kernel video fragment (`board/talaria/display-x86_64/linux-video.fragment`) are best-effort attempts at the `BR2_PACKAGE_WPEWEBKIT`/`COG`/`MESA3D`/DRM and `CONFIG_DRM_*`/`CONFIG_FB_*` symbol names — not verified against an actual Buildroot 2026.05.1 checkout or kernel 6.12 tree, since no Linux host was available while writing this. `scripts/verify-browser-packages.sh` and `scripts/verify-kernel-video-config.sh` (both wired into `scripts/build.sh`) check the *resolved* config for these exact symbols right after configuring, so a wrong or renamed symbol fails in seconds/minutes instead of after a multi-hour WPEWebKit build — but neither can catch every possible way a from-source build could fail, or whether `vga=791` actually works on any given machine. Treat the first real Buildroot run and the first real hardware pass as the actual test of this section, not this doc.
 
 ## Open Questions
 
 - Signage playlist format and how it differs from a single dashboard URL, once the server contract exists.
 - Whether `diagnostics` gets its own browser-rendered page instead of the console splash — right now it deliberately doesn't, so diagnostics never depends on the browser stack that might be the thing that's broken.
-- Crash-loop backoff: the supervisor currently relaunches a crashing browser every poll interval (5s) with no backoff. Fine for now; revisit if a bad URL causes a tight crash loop that saturates the CPU on old hardware.
+- Crash-loop backoff: even after the give-up signal fires, the supervisor keeps relaunching every poll interval (5s) with no backoff. Fine for now; revisit if a permanently-broken target saturates the CPU on genuinely old/slow hardware.
 - Multi-monitor behavior, if any target hardware has more than one output.
 - Health reporting transport and cadence back to the Talaria server.
 - Whether/when to move off software GL once real target GPUs are known from hardware validation.

@@ -27,6 +27,16 @@ if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2
   "$repo_root/scripts/verify-browser-packages.sh"
 fi
 
+# Same reasoning, one layer down: the video-coverage kernel config
+# fragment's symbols are also best-effort. `linux-configure` runs just
+# the kernel package's own configure step (source fetch + Kconfig
+# merge), which is minutes, not the multi-hour full build.
+if grep -q '^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  echo "Configuring Linux kernel (verifying video fragment)"
+  make -C "$buildroot_dir" O="$output_dir" BR2_EXTERNAL="$repo_root/external" linux-configure
+  "$repo_root/scripts/verify-kernel-video-config.sh"
+fi
+
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"
 

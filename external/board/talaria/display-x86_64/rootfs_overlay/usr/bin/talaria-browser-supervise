@@ -18,6 +18,13 @@
 # `wait`s on its own child (the only process allowed to reap it) and
 # drops an exit marker file when it's gone.
 #
+# Target hardware spans a wide range of ~2004-2014 workstations with
+# very uneven GPU/driver support. A machine where the browser can never
+# actually render (bad/missing DRM driver, unsupported mode, etc.) will
+# crash-loop forever if we just silently keep retrying — see the
+# give-up signaling below, which makes that failure visible on screen
+# instead of leaving a stale "ready" splash up with nothing behind it.
+#
 # Environment overrides, mainly for scripts/test-browser-supervise.sh:
 #
 #   TALARIA_MODE_STATE            default /run/talaria/mode-state.conf
@@ -25,6 +32,8 @@
 #   TALARIA_COG_PLATFORM          default drm
 #   TALARIA_BROWSER_POLL_INTERVAL default 5 (seconds)
 #   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
+#   TALARIA_BROWSER_MAX_CRASHES   default 3 (consecutive crashes before giving-up signal)
+#   TALARIA_BROWSER_STABLE_CYCLES default 3 (consecutive healthy cycles before the crash count resets)
 #   TALARIA_BROWSER_RUN_DIR       default /run/talaria
 #   TALARIA_CONSOLE_DEVICE        default /dev/console
 
@@ -33,6 +42,8 @@ browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
 browser_platform="${TALARIA_COG_PLATFORM:-drm}"
 poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
 max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
+max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"
+stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-3}"
 run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
@@ -44,6 +55,12 @@ mkdir -p "$run_dir" 2>/dev/null
 console_status() {
   if [ -w "$console_device" ]; then
     echo "$1" >> "$console_device"
+  fi
+}
+
+run_splash() {
+  if command -v talaria-splash >/dev/null 2>&1; then
+    talaria-splash "$1" "$2" || true
   fi
 }
 
@@ -79,6 +96,9 @@ start_browser() {
 }
 
 cycle=0
+crash_count=0
+healthy_cycles=0
+gave_up=0
 while true; do
   EFFECTIVE_MODE=""
   DISPLAY_URL=""
@@ -90,13 +110,22 @@ while true; do
     *) desired_target="" ;;
   esac
 
+  crashed_this_cycle=0
   if [ -n "$current_pid" ] && [ -f "$exit_marker" ]; then
     console_status "TALARIA_BROWSER_CRASHED target=$current_target"
     current_pid=""
+    crashed_this_cycle=1
+    crash_count=$((crash_count + 1))
+    healthy_cycles=0
   fi
 
   if [ "$desired_target" != "$current_target" ]; then
     stop_browser
+    # A fresh target (including diagnostics/no target) is a fresh start;
+    # don't carry a previous URL's crash history into the next one.
+    crash_count=0
+    healthy_cycles=0
+    gave_up=0
     if [ -n "$desired_target" ]; then
       start_browser "$desired_target"
     else
@@ -104,6 +133,25 @@ while true; do
     fi
   elif [ -n "$desired_target" ] && [ -z "$current_pid" ]; then
     start_browser "$desired_target"
+  fi
+
+  if [ "$crashed_this_cycle" -eq 0 ] && [ -n "$current_pid" ]; then
+    healthy_cycles=$((healthy_cycles + 1))
+    if [ "$healthy_cycles" -ge "$stable_cycles" ]; then
+      crash_count=0
+      gave_up=0
+    fi
+  fi
+
+  # Repeated crashes against the same target usually mean this machine
+  # can't actually render (bad/missing DRM driver, unsupported mode,
+  # etc.), not a transient hiccup. Keep retrying — it might still be
+  # transient — but say so on screen instead of leaving a stale "ready"
+  # splash with nothing behind it.
+  if [ "$gave_up" -eq 0 ] && [ "$crash_count" -ge "$max_crashes" ]; then
+    gave_up=1
+    console_status "TALARIA_BROWSER_GIVING_UP target=$current_target attempts=$crash_count"
+    run_splash diagnostics "Browser unavailable after $crash_count attempts: $current_target"
   fi
 
   cycle=$((cycle + 1))

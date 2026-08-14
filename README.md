@@ -32,6 +32,7 @@ scripts/
   test-mode-resolve.sh
   test-browser-supervise.sh
   verify-browser-packages.sh
+  verify-kernel-video-config.sh
 external/
   external.desc
   Config.in
@@ -43,6 +44,7 @@ external/
       display-x86_64/
         genimage-bios.cfg
         grub-bios.cfg
+        linux-video.fragment
         rootfs_overlay/
         post-build.sh
         post-image.sh

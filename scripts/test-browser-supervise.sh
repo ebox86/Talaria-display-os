@@ -124,6 +124,16 @@ launch_count="${launch_count:-0}"
 [[ "$launch_count" -ge 2 ]] || ok=0
 check "detects a crashed browser and relaunches it" "$ok"
 
+# --- Scenario 5: repeated crashes against the same target surface a
+#     visible give-up signal, matching the default TALARIA_BROWSER_MAX_CRASHES=3.
+#     Reuses the still-running crash-looping supervisor from scenario 4.
+ok=1
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/dashboard/ attempts=3' 15 || ok=0
+giveup_count="$(grep -c 'TALARIA_BROWSER_GIVING_UP' "$work_dir/console.log" 2>/dev/null)"
+giveup_count="${giveup_count:-0}"
+[[ "$giveup_count" -eq 1 ]] || ok=0
+check "surfaces a give-up signal after repeated crashes, only once" "$ok"
+
 stop_supervisor
 
 echo
