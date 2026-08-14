@@ -45,6 +45,7 @@ docs/
   build-and-boot.md
   first-boot-test.md
   hardware-inventory.md
+  display-runtime-design.md
 ```
 
 ## Prerequisites
