@@ -28,6 +28,7 @@ sudo apt-get install -y --no-install-recommends \
   patch \
   perl \
   python3 \
+  qemu-system-x86 \
   rsync \
   sed \
   tar \

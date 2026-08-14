@@ -1,9 +1,18 @@
 #!/bin/sh
 
+console_status() {
+  message="$1"
+
+  if [ -w /dev/console ]; then
+    echo "$message" > /dev/console
+  fi
+}
+
 case "$1" in
   start)
     mkdir -p /data/talaria
     /usr/bin/talaria-splash diagnostics "Writing phase 1 diagnostics" || true
+    console_status "TALARIA_PHASE1_START Writing diagnostics"
 
     if [ -f /etc/talaria/display.conf ]; then
       . /etc/talaria/display.conf
@@ -43,6 +52,7 @@ case "$1" in
       fi
     } >> "$log" 2>&1
     /usr/bin/talaria-splash ready "Phase 1 complete; waiting for next stage" || true
+    console_status "TALARIA_PHASE1_READY Phase 1 diagnostics complete"
     ;;
   stop)
     ;;
