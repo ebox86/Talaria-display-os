@@ -20,7 +20,11 @@ BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_LINUX_KERNEL_INSTALL_TARGET=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
+# 256M was enough for the Phase 1 console-only image. WPEWebKit, Mesa,
+# ICU, and their transitive deps push the rootfs well past that; 1536M
+# leaves headroom. Re-check against actual `du -sh output/target` once
+# the browser stack builds successfully and shrink if there's slack.
+BR2_TARGET_ROOTFS_EXT2_SIZE="1536M"
 # BR2_TARGET_ROOTFS_TAR is not set
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_I386_PC=y
@@ -36,3 +40,33 @@ BR2_PACKAGE_UTIL_LINUX_LSBLK=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_MTOOLS=y
+
+# --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS, no X11/Wayland ---
+#
+# BEST-EFFORT: these symbol names are not verified against an actual
+# Buildroot 2026.05.1 checkout — there was no Linux host available to
+# run menuconfig against this pinned version while writing this. If a
+# name below is wrong, Buildroot silently drops it rather than erroring,
+# so scripts/verify-browser-packages.sh checks the *resolved* .config
+# for these exact symbols right after configuring and before the full
+# build, so a bad name fails in seconds instead of after a multi-hour
+# WPEWebKit build. Treat a first-run failure here as expected, not a
+# regression; fix with `make O=$OUTPUT_DIR menuconfig` on Linux and
+# `./scripts/save-defconfig.sh`.
+#
+# Software rendering (Mesa llvmpipe via the swrast gallium driver) is
+# the default because target hardware GPUs are unknown
+# (docs/hardware-inventory.md is still all TBD) and there is no way to
+# validate hardware-accelerated GL in the GitHub-hosted CI runners or
+# the QEMU smoke test anyway. Once real target GPUs are known, revisit
+# with a hardware driver (e.g. BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_I915)
+# as a per-device optimization, not a default.
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES2=y
+BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
+BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_COG=y
+BR2_PACKAGE_COG_PLATFORM_DRM=y

@@ -2,7 +2,7 @@
 
 Talaria Display OS should treat the screen as a managed Talaria endpoint, not as a dashboard-only device. The same OS image should support production dashboards, digital signage, and local diagnostics without rebuilding the image per use case, and it should degrade to a safe local state whenever the server or configured content is unavailable.
 
-Phase 1 (console bring-up, networking, `/data` mount, diagnostics logging) and Phase 3's mode resolution described below are both implemented under `external/board/talaria/display-x86_64/rootfs_overlay/`. The WPE/Cog browser launcher described in [Browser Phase](#browser-phase) is still future work — mode resolution today decides and logs the effective mode but has nothing to hand it off to yet.
+Phase 1 (console bring-up, networking, `/data` mount, diagnostics logging), Phase 3's mode resolution, and Phase 3's browser supervision are all implemented under `external/board/talaria/display-x86_64/rootfs_overlay/`. The one piece that's genuinely unproven is the WPE/Cog Buildroot package wiring itself (see [Browser Phase](#browser-phase)) — it hasn't been validated against a real Buildroot build yet.
 
 ## Goals
 
@@ -69,12 +69,11 @@ Mode resolution slots in after the existing Phase 1 init stages, before any brow
 S20talaria-data           mount /data, log result
 S50talaria-network-wait   wait up to 30s for a default route, log result
 S60talaria-phase1         source config, write phase1.log, diagnostics splash
-S70talaria-mode-resolve   decide effective mode, retry loop, hand off to launcher
-S8x talaria-browser       (future) launch WPE/Cog against the resolved target, or
-                           stay in diagnostics if resolution failed
+S70talaria-mode-resolve   decide effective mode, retry loop, write mode-state.conf
+S80talaria-browser        supervise the browser against mode-state.conf
 ```
 
-`S70talaria-mode-resolve` is implemented as a thin init wrapper (`etc/init.d/S70talaria-mode-resolve`) around a single-shot resolver (`usr/bin/talaria-resolve-mode`). The wrapper runs the resolver once at `start`, then backgrounds a loop that re-runs it every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15). The resolver itself is pure enough to unit-test on the build host — its config paths and reachability probe are environment-overridable, and `scripts/test-mode-resolve.sh` exercises the cases below without needing Buildroot or QEMU.
+`S70talaria-mode-resolve` is a thin init wrapper (`etc/init.d/S70talaria-mode-resolve`) around a single-shot resolver (`usr/bin/talaria-resolve-mode`). The wrapper runs the resolver once at `start`, then backgrounds a loop that re-runs it every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15). The resolver itself is pure enough to unit-test on the build host — its config paths and reachability probe are environment-overridable, and `scripts/test-mode-resolve.sh` exercises the cases below without needing Buildroot or QEMU.
 
 Resolution logic, in order (each retry cycle, from scratch):
 
@@ -82,9 +81,23 @@ Resolution logic, in order (each retry cycle, from scratch):
 2. If `TALARIA_DISPLAY_MODE` is not one of `dashboard`, `signage`, `diagnostics` — fall back to `diagnostics`.
 3. If the resolved mode is `dashboard` or `signage` and `TALARIA_DISPLAY_URL` is unset or not a well-formed `http(s)://` URL — fall back to `diagnostics`.
 4. If the resolved mode is `dashboard` or `signage`, probe reachability of `TALARIA_SERVER_HOST` with `ping -c 1 -W 2` — if unreachable, hold in `diagnostics` and keep retrying rather than launching a browser at a dead URL.
-5. Otherwise, resolve to the configured mode and log it as ready to hand off. No browser launcher exists yet, so today this only updates the splash/log — there's nothing to hand off to.
+5. Otherwise, resolve to the configured mode and hand it to the browser supervisor via the state file below.
 
 This keeps `diagnostics` as both a first-class mode an operator can pin a device to, and the automatic result of every failure path above. Each resolution — success or fallback — is appended to `/data/talaria/display-mode.log` and echoed to the console as `TALARIA_MODE_RESOLVED mode=<mode> url=<url>` or `TALARIA_MODE_FALLBACK reason="<reason>" configured_mode=<mode>`, which `scripts/qemu-smoke-test.sh` checks for.
+
+### Handoff to the browser: `mode-state.conf`
+
+Rather than have the browser supervisor re-implement the fallback rules above, the resolver also writes a compact, shell-sourceable state file to `/run/talaria/mode-state.conf` on every cycle:
+
+```sh
+EFFECTIVE_MODE=dashboard
+DISPLAY_URL=http://talaria.local:5173/dashboard/
+FALLBACK_REASON=""
+DEVICE_ID=display-01
+RESOLVED_AT="Fri Aug 14 02:00:00 EDT 2026"
+```
+
+`DISPLAY_URL` is always empty whenever `EFFECTIVE_MODE` is `diagnostics` or a fallback fired, even if a URL happens to be configured — the supervisor never has to re-derive "should I actually trust this URL," it just checks whether one is present.
 
 ## Fallback Behavior
 
@@ -95,7 +108,7 @@ Fallback to `diagnostics` is triggered by any of:
 - `/data/talaria/display.conf` present but unparseable, or absent along with a missing/invalid `/etc/talaria/display.conf` default.
 - `TALARIA_DISPLAY_MODE` set to anything other than `dashboard`, `signage`, or `diagnostics`.
 - `TALARIA_DISPLAY_URL` unset, malformed, or unreachable for `dashboard`/`signage`.
-- Once the browser launcher exists: the configured URL loads but the browser process crashes or exits unexpectedly.
+- The browser process crashes or exits unexpectedly (`usr/bin/talaria-browser-supervise` detects this and relaunches — see [Browser Phase](#browser-phase)).
 
 While in fallback, the device:
 
@@ -121,17 +134,28 @@ A server-assigned mode should follow the same fallback rules as a locally config
 
 ## Browser Phase
 
-Not yet implemented; recorded here so mode resolution was built against the real consumer. The first browser implementation should launch WPE WebKit/Cog against the resolved `TALARIA_DISPLAY_URL`. The launcher should:
+`S80talaria-browser` backgrounds `usr/bin/talaria-browser-supervise`, which polls `/run/talaria/mode-state.conf` (default every `TALARIA_BROWSER_POLL_INTERVAL`, 5s) and reconciles the running browser process against it:
 
-- wait for the mode-resolution stage above to hand off a mode and URL
-- verify `/data` is mounted before assuming any override config applies
-- render diagnostics (per [Fallback Behavior](#fallback-behavior)) if the configured URL cannot be reached or the browser process dies
-- retry the configured URL without requiring reboot, consistent with the fallback retry policy
+- `EFFECTIVE_MODE` is `dashboard` or `signage` and `DISPLAY_URL` differs from what's currently running → stop the old process (if any) and launch the browser against the new URL.
+- `EFFECTIVE_MODE` is `diagnostics` (explicit or fallback) → stop the browser if one is running. Diagnostics itself stays the console splash from `S70`/`talaria-resolve-mode`, not a browser page — see the open question below.
+- The running browser process disappears unexpectedly → logged as `TALARIA_BROWSER_CRASHED` and relaunched against the same target on the next cycle.
+
+Console markers: `TALARIA_BROWSER_LAUNCH url=<url> pid=<pid>`, `TALARIA_BROWSER_STOPPED mode=<mode>`, `TALARIA_BROWSER_CRASHED target=<url>`. Crash detection deliberately does not use `kill -0` on the browser's pid — a child that exited but hasn't been reaped is a zombie, and `kill -0` on a zombie still succeeds. Each browser is launched inside a small monitor subshell that `wait`s on its own child (the only process allowed to reap it) and drops an exit-marker file when it's gone; the supervisor checks that marker instead.
+
+The browser command itself is a plain Cog invocation against WPE's DRM/KMS platform backend — no X11, no Wayland compositor — rendering with Mesa's software GL (llvmpipe) by default:
+
+- **DRM/KMS, not X11/Wayland**: consistent with this image staying a minimal appliance runtime; nothing else in it runs a display server.
+- **Software rendering by default**: target hardware GPUs are unknown (`docs/hardware-inventory.md` is still all TBD), and there's no way to validate hardware-accelerated GL in GitHub-hosted CI runners or the QEMU smoke test anyway. Hardware acceleration is a per-device optimization for later, once real target GPUs are known — not today's default.
+
+`usr/bin/talaria-browser-supervise` is testable the same way the resolver is: the browser command, poll interval, and state/console paths are all environment-overridable, and `scripts/test-browser-supervise.sh` exercises launch/stop/URL-change/crash-recovery against a fake browser stub without needing WPE/Cog installed.
+
+**What's unproven:** the Buildroot package selections themselves (`external/configs/talaria_display_x86_64_defconfig`) are a best-effort attempt at the `BR2_PACKAGE_WPEWEBKIT`/`COG`/`MESA3D`/DRM symbol names — not verified against an actual Buildroot 2026.05.1 checkout, since no Linux host was available while writing this. `scripts/verify-browser-packages.sh` (wired into `scripts/build.sh`) checks the *resolved* `.config` for these exact symbols right after configuring, so a wrong or renamed symbol fails in seconds instead of after a multi-hour WPEWebKit build — but it can't catch every possible way a from-source WebKit build could fail. Treat the first real Buildroot run as the actual test of this section, not this doc.
 
 ## Open Questions
 
 - Signage playlist format and how it differs from a single dashboard URL, once the server contract exists.
-- Whether `diagnostics` gets its own browser-rendered page in the same launcher, or keeps the console splash indefinitely as the failure-safe path (keeping it console-only has the advantage of not depending on the thing that's failing).
-- Process supervision for the browser (respawn policy, crash-loop backoff) once it's more than "launch and hope."
+- Whether `diagnostics` gets its own browser-rendered page instead of the console splash — right now it deliberately doesn't, so diagnostics never depends on the browser stack that might be the thing that's broken.
+- Crash-loop backoff: the supervisor currently relaunches a crashing browser every poll interval (5s) with no backoff. Fine for now; revisit if a bad URL causes a tight crash loop that saturates the CPU on old hardware.
 - Multi-monitor behavior, if any target hardware has more than one output.
 - Health reporting transport and cadence back to the Talaria server.
+- Whether/when to move off software GL once real target GPUs are known from hardware validation.

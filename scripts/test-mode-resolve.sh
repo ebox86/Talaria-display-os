@@ -20,6 +20,7 @@ run_case() {
   local etc_conf="$work_dir/$name.etc.conf"
   local data_conf="$work_dir/$name.data.conf"
   local state_log="$work_dir/$name.log"
+  local mode_state="$work_dir/$name.mode-state.conf"
 
   if [[ -n "$etc_content" ]]; then
     printf '%s\n' "$etc_content" > "$etc_conf"
@@ -36,6 +37,7 @@ run_case() {
   TALARIA_ETC_CONF="$etc_conf" \
   TALARIA_DATA_CONF="$data_conf" \
   TALARIA_STATE_LOG="$state_log" \
+  TALARIA_MODE_STATE="$mode_state" \
   TALARIA_PING_CMD="$ping_cmd" \
     sh "$resolver" >/dev/null 2>&1 || true
 
@@ -50,6 +52,18 @@ run_case() {
     ok=0
   fi
 
+  # The browser supervisor's contract: DISPLAY_URL in mode-state.conf must
+  # be empty whenever the effective mode is diagnostics or fallback fired,
+  # and non-empty whenever it's a genuinely resolved dashboard/signage mode.
+  if ! grep -q "^EFFECTIVE_MODE=$expect_mode$" "$mode_state" 2>/dev/null; then
+    ok=0
+  fi
+  if [[ "$expect_mode" == "diagnostics" || "$expect_fallback" == "yes" ]]; then
+    grep -q '^DISPLAY_URL=$' "$mode_state" 2>/dev/null || ok=0
+  else
+    grep -Eq '^DISPLAY_URL=http' "$mode_state" 2>/dev/null || ok=0
+  fi
+
   if [[ "$ok" -eq 1 ]]; then
     echo "PASS: $name"
     pass_count=$((pass_count + 1))
@@ -57,6 +71,8 @@ run_case() {
     echo "FAIL: $name"
     echo "--- $state_log ---"
     cat "$state_log" 2>/dev/null || echo "(no state log written)"
+    echo "--- $mode_state ---"
+    cat "$mode_state" 2>/dev/null || echo "(no mode-state file written)"
     fail_count=$((fail_count + 1))
   fi
 }

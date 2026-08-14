@@ -12,9 +12,9 @@ Phase 1 is a text/network bring-up image:
 old PC boots USB/rootfs -> console splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-Phase 3 adds mode resolution on top of that: the image now decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falls back to `diagnostics` on any invalid or unreachable config, and retries without a reboot. See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
+Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falls back to `diagnostics` on any invalid or unreachable config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
 
-WPE WebKit/Cog is the intended kiosk browser stack for dashboard and signage modes, but browser work should start only after mode resolution is proven on the oldest target PCs — there is currently nothing that consumes a resolved mode yet.
+The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). What's still unproven is the WPE/Cog/Mesa Buildroot package wiring itself — the Kconfig symbols in the defconfig are a best-effort guess, not yet validated against a real Buildroot build (no Linux host was available to check them against this pinned version). `scripts/verify-browser-packages.sh` catches an obviously wrong symbol name fast; a real WebKit-from-source build is still the actual test.
 
 ## Repo Layout
 
@@ -30,6 +30,8 @@ scripts/
   run-qemu.sh
   save-defconfig.sh
   test-mode-resolve.sh
+  test-browser-supervise.sh
+  verify-browser-packages.sh
 external/
   external.desc
   Config.in
@@ -159,7 +161,7 @@ For CI-style validation without a graphical window:
 ./scripts/qemu-smoke-test.sh
 ```
 
-The smoke test boots `output/images/disk.img`, captures serial output to `artifacts/qemu-smoke.log`, and passes when the Phase 1 ready marker appears.
+The smoke test boots `output/images/disk.img`, captures serial output to `artifacts/qemu-smoke.log`, and passes when the Phase 1 ready marker and a mode-resolution marker both appear.
 
 CI caches Buildroot downloads plus the generated host toolchain directories under `output/host` and selected host build stamps. This is intentionally narrower than caching the whole `output/` tree so target images still rebuild from the current external tree.
 
@@ -181,7 +183,7 @@ Success for the first real milestone:
 Old PC boots -> shows splash -> gets DHCP -> pings Talaria server -> writes /data/talaria/phase1.log
 ```
 
-Do not start browser tuning until this is true on at least one old target workstation.
+Browser-stack code (mode resolution, supervision) exists ahead of this milestone, but do not start tuning it against real content/hardware until Phase 1 boot is proven true on at least one old target workstation.
 
 ## Useful References
 

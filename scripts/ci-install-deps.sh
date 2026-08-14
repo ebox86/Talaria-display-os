@@ -34,4 +34,21 @@ sudo apt-get install -y --no-install-recommends \
   tar \
   unzip \
   wget \
-  xz-utils
+  xz-utils \
+  autoconf \
+  automake \
+  bison \
+  cmake \
+  flex \
+  gperf \
+  libtool \
+  ninja-build \
+  pkg-config \
+  ruby \
+  texinfo
+
+# Buildroot builds most of its own host tool dependencies from source
+# (host-cmake, host-ninja, etc.), so the extras above are a best-effort
+# list for whatever the WPEWebKit/Cog/Mesa host build additionally
+# expects to already be on PATH. Not verified against an actual build;
+# if a build fails on a missing host tool, add it here.

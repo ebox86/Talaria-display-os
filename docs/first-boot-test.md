@@ -23,6 +23,7 @@ The machine should:
 - Create `/data/talaria/display-mode.log`.
 - Include interface, route, and ping output in the log.
 - Resolve an effective display mode and print `TALARIA_MODE_RESOLVED` or `TALARIA_MODE_FALLBACK` to the console (see [`display-runtime-design.md`](display-runtime-design.md#mode-resolution)).
+- If the resolved mode is `dashboard`/`signage` and the browser stack built successfully, print `TALARIA_BROWSER_LAUNCH` to the console (see [`display-runtime-design.md`](display-runtime-design.md#browser-phase)). In `diagnostics` this stays console-only; no browser marker is expected.
 
 ## Commands
 
@@ -51,7 +52,11 @@ EOF
 /etc/init.d/S70talaria-mode-resolve restart
 ```
 
-`S70talaria-mode-resolve` also retries on its own every 15 seconds (`TALARIA_MODE_RESOLVE_INTERVAL`), so the `restart` above is only for forcing an immediate re-check — the override still takes effect within one interval either way.
+`S70talaria-mode-resolve` also retries on its own every 15 seconds (`TALARIA_MODE_RESOLVE_INTERVAL`), so the `restart` above is only for forcing an immediate re-check — the override still takes effect within one interval either way. `S80talaria-browser` picks up the change on its own next poll (every 5s, `TALARIA_BROWSER_POLL_INTERVAL`); restart it directly only to force an immediate recheck:
+
+```sh
+/etc/init.d/S80talaria-browser restart
+```
 
 ## Pass Criteria
 

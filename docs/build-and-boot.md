@@ -1,6 +1,6 @@
 # Build And Boot
 
-This is the Phase 1 build path for a BIOS-bootable Talaria Display OS disk image.
+This is the build path for a BIOS-bootable Talaria Display OS disk image, covering Phase 1 bring-up plus Phase 3 mode resolution and browser supervision.
 
 ## Goal
 
@@ -18,7 +18,10 @@ The image should:
 - mount persistent `/data` from partition 2 labeled `TALARIA_DATA`
 - acquire wired DHCP
 - write diagnostic logs under `/data/talaria`
-- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on any invalid or unreachable config — see [`display-runtime-design.md`](display-runtime-design.md)
+- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on any invalid or unreachable config
+- supervise a WPE/Cog kiosk browser against the resolved mode, relaunching on crash or on a URL change, stopping it entirely in `diagnostics`
+
+See [`display-runtime-design.md`](display-runtime-design.md) for the full mode/fallback/browser-supervision design.
 
 ## Build Host
 
@@ -26,7 +29,9 @@ Use a Linux build host or VM. macOS is fine for editing the repo, but Buildroot 
 
 On apt-based Linux hosts, install `libelf-dev` before building. The x86_64 Linux kernel build uses host-side `objtool`, which needs `gelf.h` from libelf.
 
-CI installs the common Buildroot host tools explicitly, including `diffutils`, `findutils`, `gawk`, `sed`, `curl`, and `wget`.
+CI installs the common Buildroot host tools explicitly, including `diffutils`, `findutils`, `gawk`, `sed`, `curl`, and `wget`, plus a best-effort set of extras for the WPEWebKit/Cog/Mesa build (`cmake`, `ninja-build`, `bison`, `flex`, `gperf`, `ruby`, and others — see `scripts/ci-install-deps.sh`). Buildroot builds most of its own host tooling from source, so this list may still be missing something the first time it actually runs; a build failing on a missing host command is a one-line fix to that script.
+
+The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `1536M` to leave room for WPEWebKit/Mesa/ICU, up from `256M` for the Phase 1 console-only image.
 
 ## Kernel Pin
 
@@ -137,15 +142,16 @@ Expected target logs:
 /data/talaria/display-mode.log
 ```
 
-To check the mode-resolution logic itself (validation and fallback rules) without a Linux build host, Buildroot, or QEMU:
+To check the mode-resolution and browser-supervision logic itself (validation, fallback rules, launch/restart/crash-recovery) without a Linux build host, Buildroot, or QEMU:
 
 ```sh
 ./scripts/test-mode-resolve.sh
+./scripts/test-browser-supervise.sh
 ```
 
-This runs `usr/bin/talaria-resolve-mode` directly against temp config files for each mode/fallback case. It does not validate init sequencing or actual boot behavior — that still needs the QEMU smoke test above.
+The first runs `usr/bin/talaria-resolve-mode` directly against temp config files for each mode/fallback case; the second runs `usr/bin/talaria-browser-supervise` against a fake browser stub. Neither validates init sequencing, actual boot behavior, or the real WPE/Cog binary — that still needs the QEMU smoke test above and, eventually, real hardware.
 
-The current splash is console-based and intentionally does not require a framebuffer image viewer or browser stack. Later WPE/Cog work can replace it by launching the kiosk browser over the same display.
+Before a full image build, `scripts/build.sh` also runs `scripts/verify-browser-packages.sh`, which checks that the WPE/Cog/Mesa Kconfig symbols in the defconfig actually resolved to `y` in the generated `.config`. Those symbol names are best-effort (not verified against a real Buildroot 2026.05.1 checkout) — this check exists so a wrong or renamed one fails in seconds, before the multi-hour WPEWebKit build, rather than after.
 
 ## Hardware Flash
 
@@ -177,4 +183,4 @@ The script asks for `YES` before writing.
 - This pass is BIOS-first, not UEFI.
 - Root is currently configured as `/dev/sda1`.
 - Persistent data is currently expected at `/dev/sda2`, with fallback probes for older/QEMU names.
-- No WPE WebKit/Cog browser stack is included yet. Mode resolution runs and logs its decision, but nothing consumes it yet.
+- The WPE/Cog browser stack has not yet completed a real Buildroot build. Mode resolution and browser supervision are implemented and unit-tested, but the actual `BR2_PACKAGE_WPEWEBKIT`/`COG`/`MESA3D` Kconfig wiring is best-effort and unverified until it runs on a real Buildroot checkout — see [`display-runtime-design.md`](display-runtime-design.md#browser-phase).

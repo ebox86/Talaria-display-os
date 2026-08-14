@@ -12,19 +12,29 @@
 # variables so this can be exercised outside the target rootfs, e.g. by
 # scripts/test-mode-resolve.sh:
 #
-#   TALARIA_ETC_CONF     default /etc/talaria/display.conf
-#   TALARIA_DATA_CONF    default /data/talaria/display.conf
-#   TALARIA_STATE_LOG    default /data/talaria/display-mode.log
-#   TALARIA_PING_CMD     default "ping -c 1 -W 2"
+#   TALARIA_ETC_CONF       default /etc/talaria/display.conf
+#   TALARIA_DATA_CONF      default /data/talaria/display.conf
+#   TALARIA_STATE_LOG      default /data/talaria/display-mode.log
+#   TALARIA_MODE_STATE     default /run/talaria/mode-state.conf
+#   TALARIA_PING_CMD       default "ping -c 1 -W 2"
+#   TALARIA_CONSOLE_DEVICE default /dev/console
+#
+# TALARIA_MODE_STATE is the machine-readable handoff talaria-browser-supervise
+# reads: a shell-sourceable EFFECTIVE_MODE/DISPLAY_URL/FALLBACK_REASON/
+# DEVICE_ID/RESOLVED_AT. DISPLAY_URL is always empty there for diagnostics or
+# fallback, so the browser supervisor never has to re-derive the fallback
+# rules itself.
 
 etc_conf="${TALARIA_ETC_CONF:-/etc/talaria/display.conf}"
 data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
 state_log="${TALARIA_STATE_LOG:-/data/talaria/display-mode.log}"
+mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
 ping_cmd="${TALARIA_PING_CMD:-ping -c 1 -W 2}"
+console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
 console_status() {
-  if [ -w /dev/console ]; then
-    echo "$1" > /dev/console
+  if [ -w "$console_device" ]; then
+    echo "$1" >> "$console_device"
   fi
 }
 
@@ -93,6 +103,23 @@ mkdir -p "$(dirname "$state_log")" 2>/dev/null
   echo
 } >> "$state_log" 2>&1
 
+# A fallback (or explicit diagnostics) never hands a URL to the browser
+# supervisor, even if one happens to be configured.
+if [ -n "$reason" ] || [ "$effective_mode" = "diagnostics" ]; then
+  state_url=""
+else
+  state_url="$display_url"
+fi
+
+mkdir -p "$(dirname "$mode_state")" 2>/dev/null
+{
+  echo "EFFECTIVE_MODE=$effective_mode"
+  echo "DISPLAY_URL=$state_url"
+  echo "FALLBACK_REASON=\"$reason\""
+  echo "DEVICE_ID=$device_id"
+  echo "RESOLVED_AT=\"$(date)\""
+} > "$mode_state" 2>/dev/null
+
 if [ -n "$reason" ]; then
   run_splash diagnostics "Fallback: $reason"
   console_status "TALARIA_MODE_FALLBACK reason=\"$reason\" configured_mode=$configured_mode"
@@ -102,7 +129,7 @@ else
       run_splash diagnostics "Diagnostics mode"
       ;;
     *)
-      run_splash ready "$effective_mode ready: $display_url (browser launcher not yet implemented)"
+      run_splash ready "$effective_mode ready: $display_url"
       ;;
   esac
   console_status "TALARIA_MODE_RESOLVED mode=$effective_mode url=${display_url:-none}"

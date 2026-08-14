@@ -1,0 +1,118 @@
+#!/bin/sh
+#
+# Supervise the kiosk browser against the mode-state file written by
+# talaria-resolve-mode. Runs forever (unless TALARIA_BROWSER_MAX_CYCLES
+# bounds it, for tests): each cycle it re-reads the state, and launches,
+# restarts, or stops the browser to match it. See
+# docs/display-runtime-design.md#browser-phase.
+#
+# The browser command itself is a plain WPE/Cog invocation against the
+# DRM backend (no X11/Wayland compositor) rendering with Mesa's software
+# GL (llvmpipe) by default, since target hardware GPUs are not yet known
+# — see the Buildroot defconfig comments for that tradeoff.
+#
+# Crash detection deliberately does not use `kill -0` on the browser's
+# pid: a child that has exited but not yet been reaped is a zombie, and
+# `kill -0` on a zombie still succeeds, so that check would never fire.
+# Instead each browser is launched inside a small monitor subshell that
+# `wait`s on its own child (the only process allowed to reap it) and
+# drops an exit marker file when it's gone.
+#
+# Environment overrides, mainly for scripts/test-browser-supervise.sh:
+#
+#   TALARIA_MODE_STATE            default /run/talaria/mode-state.conf
+#   TALARIA_BROWSER_CMD           default cog
+#   TALARIA_COG_PLATFORM          default drm
+#   TALARIA_BROWSER_POLL_INTERVAL default 5 (seconds)
+#   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
+#   TALARIA_BROWSER_RUN_DIR       default /run/talaria
+#   TALARIA_CONSOLE_DEVICE        default /dev/console
+
+mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
+browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
+browser_platform="${TALARIA_COG_PLATFORM:-drm}"
+poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
+max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
+run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
+console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
+
+browser_pid_file="$run_dir/browser.pid"
+exit_marker="$run_dir/browser.exited"
+
+mkdir -p "$run_dir" 2>/dev/null
+
+console_status() {
+  if [ -w "$console_device" ]; then
+    echo "$1" >> "$console_device"
+  fi
+}
+
+current_pid=""
+current_target=""
+
+stop_browser() {
+  if [ -n "$current_pid" ]; then
+    if [ -f "$browser_pid_file" ]; then
+      kill "$(cat "$browser_pid_file")" 2>/dev/null
+    fi
+    kill "$current_pid" 2>/dev/null
+    wait "$current_pid" 2>/dev/null
+  fi
+  current_pid=""
+  current_target=""
+  rm -f "$browser_pid_file" "$exit_marker"
+}
+
+start_browser() {
+  target="$1"
+  rm -f "$browser_pid_file" "$exit_marker"
+  (
+    "$browser_cmd" --platform="$browser_platform" "$target" &
+    child=$!
+    echo "$child" > "$browser_pid_file"
+    wait "$child" 2>/dev/null
+    : > "$exit_marker"
+  ) &
+  current_pid=$!
+  current_target="$target"
+  console_status "TALARIA_BROWSER_LAUNCH url=$target pid=$current_pid"
+}
+
+cycle=0
+while true; do
+  EFFECTIVE_MODE=""
+  DISPLAY_URL=""
+  FALLBACK_REASON=""
+  [ -f "$mode_state" ] && . "$mode_state"
+
+  case "$EFFECTIVE_MODE" in
+    dashboard|signage) desired_target="$DISPLAY_URL" ;;
+    *) desired_target="" ;;
+  esac
+
+  if [ -n "$current_pid" ] && [ -f "$exit_marker" ]; then
+    console_status "TALARIA_BROWSER_CRASHED target=$current_target"
+    current_pid=""
+  fi
+
+  if [ "$desired_target" != "$current_target" ]; then
+    stop_browser
+    if [ -n "$desired_target" ]; then
+      start_browser "$desired_target"
+    else
+      console_status "TALARIA_BROWSER_STOPPED mode=${EFFECTIVE_MODE:-unknown}"
+    fi
+  elif [ -n "$desired_target" ] && [ -z "$current_pid" ]; then
+    start_browser "$desired_target"
+  fi
+
+  cycle=$((cycle + 1))
+  if [ "$max_cycles" -gt 0 ] && [ "$cycle" -ge "$max_cycles" ]; then
+    stop_browser
+    break
+  fi
+
+  sleep "$poll_interval"
+done
+
+exit 0

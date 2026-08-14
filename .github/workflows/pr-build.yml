@@ -28,7 +28,10 @@ jobs:
   build-image:
     name: Build bootable image
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # WPEWebKit builds from source; 120m was enough for the Phase 1
+    # console-only image but is not enough headroom for that. Revisit
+    # once we have real timing data from a successful run.
+    timeout-minutes: 300
 
     steps:
       - name: Checkout
@@ -36,6 +39,9 @@ jobs:
 
       - name: Test mode-resolve logic
         run: ./scripts/test-mode-resolve.sh
+
+      - name: Test browser-supervise logic
+        run: ./scripts/test-browser-supervise.sh
 
       - name: Read Buildroot version
         id: buildroot
