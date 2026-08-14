@@ -1,11 +1,12 @@
-menu "Talaria Dashboard OS"
+menu "Talaria Display OS"
 
-config BR2_PACKAGE_TALARIA_DASHBOARD_OS_NOTES
-	bool "Talaria dashboard OS project notes"
+config BR2_PACKAGE_TALARIA_DISPLAY_OS_NOTES
+	bool "Talaria display OS project notes"
 	help
 	  This external tree currently provides board files, rootfs overlays,
-	  and scripts for the Talaria Dashboard OS proof of concept. The first
+	  and scripts for the Talaria Display OS proof of concept. The first
 	  milestone is a minimal text/network image. WPE WebKit/Cog kiosk
-	  browser support will be added after hardware bring-up is proven.
+	  browser support for dashboard and signage modes will be added after
+	  hardware bring-up is proven.
 
 endmenu

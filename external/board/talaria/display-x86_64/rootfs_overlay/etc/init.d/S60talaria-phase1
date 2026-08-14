@@ -13,13 +13,17 @@ case "$1" in
       . /data/talaria/display.conf
     fi
 
+    TALARIA_DISPLAY_MODE="${TALARIA_DISPLAY_MODE:-dashboard}"
+    TALARIA_DISPLAY_URL="${TALARIA_DISPLAY_URL:-unset}"
+
     log=/data/talaria/phase1.log
     {
-      echo "=== Talaria Dashboard OS phase 1 ==="
+      echo "=== Talaria Display OS phase 1 ==="
       date
       echo "hostname: $(hostname)"
       echo "device_id: ${TALARIA_DEVICE_ID:-unconfigured}"
-      echo "dashboard_url: ${TALARIA_DASHBOARD_URL:-unset}"
+      echo "display_mode: $TALARIA_DISPLAY_MODE"
+      echo "display_url: $TALARIA_DISPLAY_URL"
       echo
       echo "--- interfaces ---"
       ip addr show 2>/dev/null || ifconfig -a

@@ -14,7 +14,7 @@ Use this checklist for the Phase 1 text/network image.
 The machine should:
 
 - Boot from the USB image.
-- Show the Talaria Dashboard OS console splash.
+- Show the Talaria Display OS console splash.
 - Reach BusyBox userspace.
 - Bring up wired networking with DHCP.
 - Create `/data/talaria/phase1.log`.
@@ -40,7 +40,8 @@ If the Talaria host name is not resolvable yet, create a temporary override:
 mkdir -p /data/talaria
 cat > /data/talaria/display.conf <<'EOF'
 TALARIA_SERVER_HOST=192.168.1.50
-TALARIA_DASHBOARD_URL=http://192.168.1.50:5173/
+TALARIA_DISPLAY_MODE=dashboard
+TALARIA_DISPLAY_URL=http://192.168.1.50:5173/dashboard/
 TALARIA_DEVICE_ID=display-01
 EOF
 /etc/init.d/S60talaria-phase1 restart

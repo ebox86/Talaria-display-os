@@ -51,4 +51,4 @@ fi
 
 copy_grub_boot_img
 
-echo "Talaria Dashboard OS rootfs prepared at $target_dir"
+echo "Talaria Display OS rootfs prepared at $target_dir"
