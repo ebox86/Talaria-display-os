@@ -88,6 +88,21 @@ talaria-display-os-main-<run-number>
 
 Download and extract the artifact, then use the included image with QEMU or `scripts/flash-usb.sh`.
 
+The automatic PR and main workflows are path-filtered to Buildroot inputs, board files, scripts, and workflow files. Use the workflow's manual `workflow_dispatch` button when a docs-only or planning-only change still needs a full image build.
+
+CI caches source downloads and the generated Buildroot host toolchain cache:
+
+```text
+dl/
+.build/buildroot-<version>.tar.xz
+output/host
+output/build/host-*
+output/build/toolchain-*
+output/build/linux-headers-*
+```
+
+The cache key includes the Buildroot version, external tree, and build scripts. The full target output is intentionally not cached.
+
 ## QEMU Smoke Test
 
 Install QEMU on the Linux build host, then run:
@@ -97,6 +112,24 @@ Install QEMU on the Linux build host, then run:
 ```
 
 The QEMU runner intentionally uses IDE storage and an e1000 NIC instead of virtio so device naming and drivers are closer to old desktop PCs.
+
+For a headless boot check matching CI:
+
+```sh
+./scripts/qemu-smoke-test.sh
+```
+
+The smoke test captures serial console output to:
+
+```text
+artifacts/qemu-smoke.log
+```
+
+It passes when the boot log contains:
+
+```text
+TALARIA_PHASE1_READY
+```
 
 Expected target logs:
 

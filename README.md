@@ -24,6 +24,7 @@ scripts/
   ci-install-deps.sh
   flash-usb.sh
   package-artifacts.sh
+  qemu-smoke-test.sh
   run-qemu.sh
   save-defconfig.sh
 external/
@@ -113,6 +114,17 @@ Package the boot image, manifest, checksums, and test notes with:
 
 GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run.
 
+The automatic full-image workflows are path-filtered to OS build inputs:
+
+```text
+.github/workflows/
+buildroot-version.txt
+external/
+scripts/
+```
+
+Use `workflow_dispatch` on either workflow to force a full image build for any other change.
+
 ## Defconfig Hygiene
 
 After changing Buildroot settings with `menuconfig`, save the minimized external-tree defconfig with:
@@ -136,6 +148,16 @@ On a Linux host with QEMU installed:
 ```
 
 The QEMU runner uses IDE storage and an e1000 NIC to stay closer to old workstation hardware than a virtio-only VM.
+
+For CI-style validation without a graphical window:
+
+```sh
+./scripts/qemu-smoke-test.sh
+```
+
+The smoke test boots `output/images/disk.img`, captures serial output to `artifacts/qemu-smoke.log`, and passes when the Phase 1 ready marker appears.
+
+CI caches Buildroot downloads plus the generated host toolchain directories under `output/host` and selected host build stamps. This is intentionally narrower than caching the whole `output/` tree so target images still rebuild from the current external tree.
 
 ## Flashing
 

@@ -4,6 +4,12 @@ on:
   push:
     branches:
       - main
+    paths:
+      - ".github/workflows/pr-build.yml"
+      - ".github/workflows/main-build.yml"
+      - "buildroot-version.txt"
+      - "external/**"
+      - "scripts/**"
   workflow_dispatch:
 
 permissions:
@@ -41,6 +47,18 @@ jobs:
             ${{ runner.os }}-buildroot-${{ steps.buildroot.outputs.version }}-
             ${{ runner.os }}-buildroot-
 
+      - name: Cache Buildroot host toolchain
+        uses: actions/cache@v5
+        with:
+          path: |
+            output/host
+            output/build/host-*
+            output/build/toolchain-*
+            output/build/linux-headers-*
+          key: ${{ runner.os }}-buildroot-host-${{ steps.buildroot.outputs.version }}-${{ hashFiles('buildroot-version.txt', 'external/**', 'scripts/build.sh', 'scripts/save-defconfig.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-buildroot-host-${{ steps.buildroot.outputs.version }}-
+
       - name: Install host dependencies
         run: ./scripts/ci-install-deps.sh
 
@@ -53,11 +71,17 @@ jobs:
       - name: Package boot and test artifacts
         run: ./scripts/package-artifacts.sh
 
+      - name: QEMU smoke test
+        run: ./scripts/qemu-smoke-test.sh
+
       - name: Upload image artifacts
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: talaria-display-os-main-${{ github.run_number }}
-          path: artifacts/talaria-display-os-*.tar.gz
+          path: |
+            artifacts/talaria-display-os-*.tar.gz
+            artifacts/qemu-smoke.log
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
