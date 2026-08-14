@@ -43,6 +43,17 @@ grep -o lm /proc/cpuinfo | head -1   # prints "lm" if the CPU supports long mode
 
 Two things fall out of this pass: Intel's onboard graphics (GMA950/3100/X3000/4500, all `i915`) show up across nearly every model here and have by far the most mature, consistent mainline Linux driver of any vendor in this era — worth weighting selection toward Intel-graphics units when there's a choice, even though `radeon`/`nouveau` coverage exists as a fallback. And the Core 2 Duo generation (OptiPlex 755/760, roughly 2007+) removes the 64-bit-eligibility guesswork entirely, unlike every Pentium 4/Celeron D/early-Athlon-era machine above — if minimizing unknowns matters more than maximizing "how old can we go," that's the era to prioritize sourcing from.
 
+### x86 thin clients: a different constraint, not just "smaller old PCs"
+
+Old x86/x86_64 thin clients (HP t5xxx, Dell/Wyse) are architecturally the same kind of machine as everything above — they'd boot the same image in principle — but the real blocker isn't CPU or GPU, it's **storage and RAM being an order of magnitude tighter**:
+
+| Model | Era | CPU | RAM | Flash | x86_64 |
+| --- | --- | --- | --- | --- | --- |
+| HP t5730 | ~2009 | AMD Sempron (K8), 1 GHz | 512 MB | 1 GB (44-pin IDE) | unconfirmed |
+| HP t5740 | ~2009-2010 | Intel Atom N280, 1.66 GHz | 2 GB (8 GB max) | 2-4 GB (44-pin IDE + open SATA slot) | unconfirmed — early Atom 64-bit support is notoriously inconsistent, don't assume it |
+
+The t5730's entire flash (1 GB) is smaller than this image's rootfs partition alone (1536M, sized for WPEWebKit/Mesa/ICU). This isn't a "will it boot" question like the desktop candidates above — it's a "the current image cannot physically fit" question. Supporting this class of hardware for real means a genuinely smaller build variant (fewer packages, smaller rootfs, possibly dropping video drivers this class of hardware won't use), not a config tweak. Treat as future scope, not something today's defconfig should try to also serve.
+
 ## Decision Rule
 
 Do not optimize for the newest/easiest workstation first. The proof of concept only matters if the oldest realistic target can boot, network, and display reliably. For the video/browser stack specifically: a config choice that only works on one nice machine in the pile isn't done — the point is graceful degradation (working diagnostics console at minimum) across whatever the fleet actually turns out to be, not a single golden machine.
