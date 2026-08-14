@@ -34,8 +34,15 @@
 #   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
 #   TALARIA_BROWSER_MAX_CRASHES   default 3 (consecutive crashes before giving-up signal)
 #   TALARIA_BROWSER_STABLE_CYCLES default 3 (consecutive healthy cycles before the crash count resets)
+#   TALARIA_BROWSER_BACKOFF_BASE  default 5 (seconds; delay before the 1st relaunch attempt after a crash)
+#   TALARIA_BROWSER_BACKOFF_MAX   default 60 (seconds; backoff cap)
 #   TALARIA_BROWSER_RUN_DIR       default /run/talaria
 #   TALARIA_CONSOLE_DEVICE        default /dev/console
+#
+# Backoff only delays *relaunching the same crashing target* - it never
+# delays noticing a mode/target change. A config fix or a server
+# reassignment still takes effect within one poll cycle even while a
+# previous target is deep in backoff.
 
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
 browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
@@ -44,6 +51,8 @@ poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
 max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
 max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"
 stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-3}"
+backoff_base="${TALARIA_BROWSER_BACKOFF_BASE:-5}"
+backoff_max="${TALARIA_BROWSER_BACKOFF_MAX:-60}"
 run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
@@ -99,6 +108,7 @@ cycle=0
 crash_count=0
 healthy_cycles=0
 gave_up=0
+backoff_until=0
 while true; do
   EFFECTIVE_MODE=""
   DISPLAY_URL=""
@@ -117,22 +127,39 @@ while true; do
     crashed_this_cycle=1
     crash_count=$((crash_count + 1))
     healthy_cycles=0
+
+    # delay = backoff_base * 2^(crash_count-1), capped at backoff_max.
+    delay="$backoff_base"
+    i=1
+    while [ "$i" -lt "$crash_count" ] && [ "$delay" -lt "$backoff_max" ]; do
+      delay=$((delay * 2))
+      i=$((i + 1))
+    done
+    [ "$delay" -gt "$backoff_max" ] && delay="$backoff_max"
+    now="$(date +%s 2>/dev/null || echo 0)"
+    backoff_until=$((now + delay))
+    console_status "TALARIA_BROWSER_BACKOFF seconds=$delay crash_count=$crash_count"
   fi
 
   if [ "$desired_target" != "$current_target" ]; then
     stop_browser
     # A fresh target (including diagnostics/no target) is a fresh start;
-    # don't carry a previous URL's crash history into the next one.
+    # don't carry a previous URL's crash history, or its backoff, into
+    # the next one.
     crash_count=0
     healthy_cycles=0
     gave_up=0
+    backoff_until=0
     if [ -n "$desired_target" ]; then
       start_browser "$desired_target"
     else
       console_status "TALARIA_BROWSER_STOPPED mode=${EFFECTIVE_MODE:-unknown}"
     fi
   elif [ -n "$desired_target" ] && [ -z "$current_pid" ]; then
-    start_browser "$desired_target"
+    now="$(date +%s 2>/dev/null || echo 0)"
+    if [ "$now" -ge "$backoff_until" ]; then
+      start_browser "$desired_target"
+    fi
   fi
 
   if [ "$crashed_this_cycle" -eq 0 ] && [ -n "$current_pid" ]; then
@@ -140,6 +167,7 @@ while true; do
     if [ "$healthy_cycles" -ge "$stable_cycles" ]; then
       crash_count=0
       gave_up=0
+      backoff_until=0
     fi
   fi
 
