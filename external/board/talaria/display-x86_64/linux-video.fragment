@@ -30,6 +30,16 @@ CONFIG_DRM_I915=m
 CONFIG_DRM_RADEON=m
 CONFIG_DRM_NOUVEAU=m
 
+# i915 alone is not enough for pre-2005-ish Intel integrated graphics
+# (i830/845G/852GM/855GM/865G, "Extreme Graphics"/"Extreme Graphics 2")
+# - that generation predates PCIe and talks to the CPU over AGP, which
+# needs the kernel's AGP GART driver present or the i915 driver won't
+# find a working aperture. Newer Intel IGPs (945 and later, already
+# PCIe-based) don't need this, but it's harmless to leave enabled for
+# them too.
+CONFIG_AGP=y
+CONFIG_AGP_INTEL=y
+
 # Server/workstation-board onboard video (Matrox, ASPEED BMC) shows up
 # more often than expected in decommissioned corporate hardware.
 CONFIG_DRM_MGAG200=m
