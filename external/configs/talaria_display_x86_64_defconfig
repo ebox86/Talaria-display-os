@@ -46,7 +46,7 @@ BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_MTOOLS=y
 
-# --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS, no X11/Wayland ---
+# --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS at runtime ---
 #
 # BEST-EFFORT: these symbol names are not verified against an actual
 # Buildroot 2026.05.1 checkout — there was no Linux host available to
@@ -58,6 +58,18 @@ BR2_PACKAGE_HOST_MTOOLS=y
 # WPEWebKit build. Treat a first-run failure here as expected, not a
 # regression; fix with `make O=$OUTPUT_DIR menuconfig` on Linux and
 # `./scripts/save-defconfig.sh`.
+#
+# Iteration 1 (first real CI run) failed: BR2_PACKAGE_WPEWEBKIT/COG/
+# COG_PLATFORM_DRM all failed to resolve, while the Mesa/DRM/EGL lines
+# below resolved fine. Root cause per Buildroot's actual wpewebkit
+# Config.in: WPEWebKit's own EGL implementation has a hard dependency
+# on an EGL-capable Wayland backend (libwayland-egl), which we never
+# enabled at all. This does NOT mean a Wayland compositor runs at
+# runtime — Cog's DRM backend still owns the actual on-screen
+# rendering via KMS, same as before. It's a build-time library
+# dependency of WPEWebKit's EGL code, not a runtime architecture
+# change; the "no X11/Wayland compositor" decision in
+# docs/display-runtime-design.md still holds.
 #
 # Software rendering (Mesa llvmpipe via the swrast gallium driver) is
 # the default because target hardware GPUs are unknown
@@ -72,6 +84,8 @@ BR2_PACKAGE_MESA3D_OPENGL_EGL=y
 BR2_PACKAGE_MESA3D_OPENGL_ES2=y
 BR2_PACKAGE_MESA3D_GBM=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
+BR2_PACKAGE_WAYLAND=y
+BR2_PACKAGE_WAYLAND_PROTOCOLS=y
 BR2_PACKAGE_WPEWEBKIT=y
 BR2_PACKAGE_COG=y
 BR2_PACKAGE_COG_PLATFORM_DRM=y
