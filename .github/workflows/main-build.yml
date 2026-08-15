@@ -95,28 +95,32 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Compute release metadata
-        id: meta
-        shell: bash
-        run: |
-          short_sha="$(git rev-parse --short HEAD)"
-          echo "short_sha=$short_sha" >> "$GITHUB_OUTPUT"
-          echo "tag=main-${{ github.run_number }}-$short_sha" >> "$GITHUB_OUTPUT"
-
       # Only reached if the QEMU smoke test above passed - a build that
-      # doesn't boot doesn't get a release, on top of the 30-day
-      # artifact above. Prerelease: these are automatic per-build dev
-      # snapshots, not curated version bumps, so they shouldn't claim
-      # GitHub's "Latest" badge or imply more stability than exists.
-      - name: Create GitHub Release
+      # doesn't boot doesn't touch the release, on top of the 30-day
+      # artifact above still being uploaded for those to debug from.
+      #
+      # One rolling release (tag dev-latest), replaced every run, not a
+      # new release per build. A fresh tag per build gets noisy fast and
+      # isn't what this is for - it's a stable place to grab a working
+      # image (e.g. for a Hyper-V/UTM VM), not a versioned history. For
+      # "I need last week's build specifically," the 30-day workflow
+      # artifact (talaria-display-os-main-<run-number>) is the way to
+      # reach a specific past run within that window.
+      #
+      # Prerelease: these are automatic dev snapshots, not curated
+      # version bumps, so they shouldn't claim GitHub's "Latest" badge
+      # or imply more stability than exists.
+      - name: Update rolling dev release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "${{ steps.meta.outputs.tag }}" \
+          short_sha="$(git rev-parse --short HEAD)"
+          gh release delete dev-latest --yes --cleanup-tag || true
+          gh release create dev-latest \
             artifacts/talaria-display-os-*.tar.gz \
             artifacts/qemu-smoke.log \
-            --title "Main build #${{ github.run_number }} (${{ steps.meta.outputs.short_sha }})" \
-            --notes "Automatic build from a Main Build CI run that passed the QEMU boot smoke test.
+            --title "Latest main build (run #${{ github.run_number }}, $short_sha)" \
+            --notes "Automatically replaced on every Main Build run that passes the QEMU boot smoke test - this is the current build, not a version history. Built from commit $short_sha, workflow run #${{ github.run_number }}.
 
-          This is a development snapshot, not a curated release. See the attached manifest/checksums inside the tarball for exact package provenance. The WPE/Cog browser stack is still best-effort/unverified Kconfig — check the build log for this run to see whether it actually built successfully, don't assume it from the release existing." \
+          This is a development snapshot, not a curated release. See the attached manifest/checksums inside the tarball for exact package provenance. The WPE/Cog browser stack is still best-effort/unverified Kconfig — check this run's build log to see whether it actually built successfully, don't assume it from this release existing." \
             --prerelease

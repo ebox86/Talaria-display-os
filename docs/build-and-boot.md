@@ -98,9 +98,11 @@ Download and extract the artifact, then use the included image with QEMU or `scr
 
 ## GitHub Releases
 
-Every `Main Build` run that passes the QEMU smoke test also cuts a GitHub Release, tagged `main-<run-number>-<short-sha>`, with the same packaged bundle (image, checksums, manifest, docs) attached as a release asset. This exists mainly so a downloadable image has a permanent, stable URL — useful for pulling a disk image into a VM (Hyper-V, UTM, VirtualBox, whatever) without needing to be signed into the Actions UI or race a 30-day artifact expiry.
+Every `Main Build` run that passes the QEMU smoke test replaces a single rolling GitHub Release, tagged `dev-latest`, with the current packaged bundle (image, checksums, manifest, docs) attached as a release asset. This exists mainly so a downloadable image has a permanent, stable URL — useful for pulling a disk image into a VM (Hyper-V, UTM, VirtualBox, whatever) without needing to be signed into the Actions UI or race a 30-day artifact expiry.
 
-These are marked prerelease and are automatic per-build dev snapshots, not curated versioned releases — a release existing means the image booted in QEMU, not that the browser stack built successfully. Check that specific run's build log before assuming more than "it boots to whatever mode it resolved, including possibly `diagnostics` if WPE/Cog didn't build." A build that fails the smoke test does not get a release; the 30-day artifact (including `qemu-smoke.log`) is still uploaded for those to debug from.
+It's one release that gets replaced each time, not a new tag per build — a fresh release per commit gets noisy fast and isn't the point; the point is "give me something to boot right now." For a specific past build within the last 30 days, use that run's `talaria-display-os-main-<run-number>` workflow artifact instead (includes `qemu-smoke.log`).
+
+`dev-latest` is marked prerelease and is an automatic dev snapshot, not a curated versioned release — the release existing means the image booted in QEMU, not that the browser stack built successfully. Check that specific run's build log before assuming more than "it boots to whatever mode it resolved, including possibly `diagnostics` if WPE/Cog didn't build." A build that fails the smoke test does not touch the release; the 30-day artifact is still uploaded for those to debug from.
 
 The automatic PR and main workflows are path-filtered to Buildroot inputs, board files, scripts, and workflow files. Use the workflow's manual `workflow_dispatch` button when a docs-only or planning-only change still needs a full image build.
 
