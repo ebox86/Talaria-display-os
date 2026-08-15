@@ -15,12 +15,21 @@ BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.94"
 BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y
+# See board/talaria/display-x86_64/linux-video.fragment: broad DRM/fb
+# driver coverage plus a simpledrm/vesafb fallback for the wide range
+# of ~2004-2014 target hardware, layered on top of the arch default
+# config above. BEST-EFFORT, see the fragment file's own header comment.
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/linux-video.fragment"
 BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
 BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_LINUX_KERNEL_INSTALL_TARGET=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
+# 256M was enough for the Phase 1 console-only image. WPEWebKit, Mesa,
+# ICU, and their transitive deps push the rootfs well past that; 1536M
+# leaves headroom. Re-check against actual `du -sh output/target` once
+# the browser stack builds successfully and shrink if there's slack.
+BR2_TARGET_ROOTFS_EXT2_SIZE="1536M"
 # BR2_TARGET_ROOTFS_TAR is not set
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_I386_PC=y
@@ -36,3 +45,67 @@ BR2_PACKAGE_UTIL_LINUX_LSBLK=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_MTOOLS=y
+
+# --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS at runtime ---
+#
+# Symbol names below are now verified against the actual Buildroot
+# 2026.05.1 source (downloaded and read package/{wpewebkit,cog,mesa3d}
+# /Config.in directly - not guessed, not summarized secondhand). What's
+# still unverified is whether the full from-source compile actually
+# succeeds; scripts/verify-browser-packages.sh's fast-fail check only
+# confirms these symbols *resolved*, not that the build completes.
+#
+# History, for whoever hits this again: iteration 1 (first real CI
+# run, PR #4) failed with WPEWEBKIT/COG/COG_PLATFORM_DRM all missing.
+# Root-caused by downloading the real Buildroot source and reading the
+# actual Config.in files instead of continuing to guess:
+#   - wpewebkit needs BR2_PACKAGE_HAS_LIBGLES, provided by
+#     `select BR2_PACKAGE_HAS_LIBGLES` on BR2_PACKAGE_MESA3D_OPENGL_ES.
+#     The defconfig had BR2_PACKAGE_MESA3D_OPENGL_ES2, which doesn't
+#     exist in this Buildroot version (no ES1/ES2 split - just one
+#     "OpenGL ES" option) - silently dropped, so HAS_LIBGLES was never
+#     provided, so wpewebkit's `depends on BR2_PACKAGE_HAS_LIBGLES`
+#     failed, cascading to cog (`depends on BR2_PACKAGE_WPEWEBKIT`).
+#   - wpewebkit's Config.in already has `select BR2_PACKAGE_WAYLAND`
+#     and `select BR2_PACKAGE_WAYLAND_PROTOCOLS` itself once enabled -
+#     no need to set those explicitly in this defconfig (an earlier
+#     attempt did; removed as redundant once the real dependency was
+#     found). This does NOT mean a Wayland compositor runs at runtime -
+#     Cog's DRM backend still owns actual on-screen rendering via KMS.
+#     It's a build-time library dependency of WPEWebKit's own EGL
+#     implementation. The "no X11/Wayland compositor" decision in
+#     docs/display-runtime-design.md still holds.
+#   - GCC version was not the issue: this Buildroot's default internal
+#     toolchain is gcc 14.x for x86_64, well above wpewebkit's gcc >=11
+#     requirement.
+#
+# Iteration 2 (second real CI run) got past package resolution and
+# failed differently: "Makefile.legacy: You have legacy configuration
+# in your .config!". Cross-referenced every symbol in this file against
+# Buildroot's actual top-level Config.in.legacy (also downloaded, not
+# guessed) and found one match: BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST
+# was renamed to BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE in this
+# Buildroot version. The old name is kept as a real (deprecated)
+# Kconfig option that auto-selects the new one via `select`, so it
+# still resolved to 'y' and passed verify-browser-packages.sh's check -
+# but setting BR2_LEGACY that way hard-stops any real build target
+# (make linux-configure, the full build, etc.), just not the initial
+# defconfig merge itself. Fixed by setting the current name directly.
+#
+# Software rendering (Mesa's plain "softpipe" Gallium driver, no LLVM
+# dependency - not "llvmpipe", a separate LLVM-based driver this repo
+# doesn't use) is the default because target hardware GPUs are unknown
+# (docs/hardware-inventory.md is still all TBD) and there is no way to
+# validate hardware-accelerated GL in the GitHub-hosted CI runners or
+# the QEMU smoke test anyway. Once real target GPUs are known, revisit
+# with a hardware driver (e.g. BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_I915)
+# as a per-device optimization, not a default.
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
+BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_COG=y
+BR2_PACKAGE_COG_PLATFORM_DRM=y

@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: main-build-${{ github.ref }}
@@ -23,11 +23,20 @@ jobs:
   build-image:
     name: Build boot and test artifacts
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    # WPEWebKit builds from source; 120m was enough for the Phase 1
+    # console-only image but is not enough headroom for that. Revisit
+    # once we have real timing data from a successful run.
+    timeout-minutes: 300
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+
+      - name: Test mode-resolve logic
+        run: ./scripts/test-mode-resolve.sh
+
+      - name: Test browser-supervise logic
+        run: ./scripts/test-browser-supervise.sh
 
       - name: Read Buildroot version
         id: buildroot
@@ -82,6 +91,58 @@ jobs:
           path: |
             artifacts/talaria-display-os-*.tar.gz
             artifacts/qemu-smoke.log
+            artifacts/qemu-screenshot.png
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
+
+      - name: Add QEMU screenshot to job summary
+        if: always()
+        shell: bash
+        run: |
+          screenshot="artifacts/qemu-screenshot.png"
+          if [[ ! -s "$screenshot" ]]; then
+            echo "No QEMU screenshot was captured for this run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### QEMU boot screenshot"
+            echo
+            echo "![QEMU boot screenshot](data:image/png;base64,$(base64 -w0 "$screenshot"))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only reached if the QEMU smoke test above passed - a build that
+      # doesn't boot doesn't touch the release, on top of the 30-day
+      # artifact above still being uploaded for those to debug from.
+      #
+      # One rolling release (tag dev-latest), replaced every run, not a
+      # new release per build. A fresh tag per build gets noisy fast and
+      # isn't what this is for - it's a stable place to grab a working
+      # image (e.g. for a Hyper-V/UTM VM), not a versioned history. For
+      # "I need last week's build specifically," the 30-day workflow
+      # artifact (talaria-display-os-main-<run-number>) is the way to
+      # reach a specific past run within that window.
+      #
+      # Prerelease: these are automatic dev snapshots, not curated
+      # version bumps, so they shouldn't claim GitHub's "Latest" badge
+      # or imply more stability than exists.
+      - name: Update rolling dev release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          short_sha="$(git rev-parse --short HEAD)"
+          # qemu-screenshot.png is best-effort (see qemu-smoke-test.sh) and
+          # may not exist even on a passing run; `gh release create` hard-fails
+          # on a missing file argument, so only include it if it's really there.
+          release_assets=(artifacts/talaria-display-os-*.tar.gz artifacts/qemu-smoke.log)
+          if [[ -s artifacts/qemu-screenshot.png ]]; then
+            release_assets+=(artifacts/qemu-screenshot.png)
+          fi
+          gh release delete dev-latest --yes --cleanup-tag || true
+          gh release create dev-latest \
+            "${release_assets[@]}" \
+            --title "Latest main build (run #${{ github.run_number }}, $short_sha)" \
+            --notes "Automatically replaced on every Main Build run that passes the QEMU boot smoke test - this is the current build, not a version history. Built from commit $short_sha, workflow run #${{ github.run_number }}.
+
+          This is a development snapshot, not a curated release. See the attached manifest/checksums inside the tarball for exact package provenance. The WPE/Cog browser stack is still best-effort/unverified Kconfig — check this run's build log to see whether it actually built successfully, don't assume it from this release existing." \
+            --prerelease

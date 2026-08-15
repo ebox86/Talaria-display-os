@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# Background the browser supervisor. It reads the mode state that
+# S70talaria-mode-resolve keeps refreshed and launches/restarts/stops the
+# kiosk browser to match. See docs/display-runtime-design.md#browser-phase.
+
+pidfile=/var/run/talaria-browser-supervise.pid
+
+case "$1" in
+  start)
+    /usr/bin/talaria-browser-supervise &
+    echo $! > "$pidfile"
+    ;;
+  stop)
+    if [ -f "$pidfile" ]; then
+      kill "$(cat "$pidfile")" 2>/dev/null || true
+      rm -f "$pidfile"
+    fi
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0
