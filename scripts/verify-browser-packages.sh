@@ -25,7 +25,7 @@ required_symbols=(
   BR2_PACKAGE_MESA3D_OPENGL_EGL
   BR2_PACKAGE_MESA3D_OPENGL_ES
   BR2_PACKAGE_MESA3D_GBM
-  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE
   # These two are what wpewebkit's Config.in actually `depends on` -
   # checking them directly, not just the Mesa options that are supposed
   # to provide them, is what would have caught the MESA3D_OPENGL_ES2-
@@ -55,4 +55,22 @@ if [[ "${#missing[@]}" -gt 0 ]]; then
   exit 1
 fi
 
-echo "Browser-stack packages resolved correctly in $config_file."
+# General safety net beyond the specific symbols above: Buildroot marks
+# ANY deprecated/renamed option with `select BR2_LEGACY` when it's set
+# (e.g. MESA3D_GALLIUM_DRIVER_SWRAST -> _SOFTPIPE, found this way in
+# iteration 2). A legacy option can still resolve to 'y' and pass every
+# check above while silently hard-stopping the next real Buildroot
+# invocation (`Makefile.legacy: You have legacy configuration`), so
+# check for BR2_LEGACY itself rather than only the specific renames
+# already known about.
+if grep -qx 'BR2_LEGACY=y' "$config_file"; then
+  echo "$config_file sets a deprecated/renamed Buildroot option (BR2_LEGACY=y)." >&2
+  echo "This resolves fine but hard-stops the next real build step. Find which" >&2
+  echo "option in external/configs/talaria_display_x86_64_defconfig it is by" >&2
+  echo "cross-referencing against Buildroot's own Config.in.legacy, e.g.:" >&2
+  echo "  grep -oE '^BR2_[A-Z0-9_]+' external/configs/talaria_display_x86_64_defconfig |" >&2
+  echo "    xargs -I{} grep -l '^config {}\$' \$BUILDROOT_DIR/Config.in.legacy" >&2
+  exit 1
+fi
+
+echo "Browser-stack packages resolved correctly in $config_file, no legacy options set."

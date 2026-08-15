@@ -79,8 +79,22 @@ BR2_PACKAGE_HOST_MTOOLS=y
 #     toolchain is gcc 14.x for x86_64, well above wpewebkit's gcc >=11
 #     requirement.
 #
-# Software rendering (Mesa llvmpipe via the swrast gallium driver) is
-# the default because target hardware GPUs are unknown
+# Iteration 2 (second real CI run) got past package resolution and
+# failed differently: "Makefile.legacy: You have legacy configuration
+# in your .config!". Cross-referenced every symbol in this file against
+# Buildroot's actual top-level Config.in.legacy (also downloaded, not
+# guessed) and found one match: BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST
+# was renamed to BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE in this
+# Buildroot version. The old name is kept as a real (deprecated)
+# Kconfig option that auto-selects the new one via `select`, so it
+# still resolved to 'y' and passed verify-browser-packages.sh's check -
+# but setting BR2_LEGACY that way hard-stops any real build target
+# (make linux-configure, the full build, etc.), just not the initial
+# defconfig merge itself. Fixed by setting the current name directly.
+#
+# Software rendering (Mesa's plain "softpipe" Gallium driver, no LLVM
+# dependency - not "llvmpipe", a separate LLVM-based driver this repo
+# doesn't use) is the default because target hardware GPUs are unknown
 # (docs/hardware-inventory.md is still all TBD) and there is no way to
 # validate hardware-accelerated GL in the GitHub-hosted CI runners or
 # the QEMU smoke test anyway. Once real target GPUs are known, revisit
@@ -91,7 +105,7 @@ BR2_PACKAGE_MESA3D=y
 BR2_PACKAGE_MESA3D_OPENGL_EGL=y
 BR2_PACKAGE_MESA3D_OPENGL_ES=y
 BR2_PACKAGE_MESA3D_GBM=y
-BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
 BR2_PACKAGE_WPEWEBKIT=y
 BR2_PACKAGE_COG=y
 BR2_PACKAGE_COG_PLATFORM_DRM=y
