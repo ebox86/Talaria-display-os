@@ -120,7 +120,7 @@ Package the boot image, manifest, checksums, and test notes with:
 ./scripts/package-artifacts.sh
 ```
 
-GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run.
+GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run. Main builds that pass the QEMU smoke test also get a permanent, downloadable GitHub Release (prerelease, tagged by run number/commit) — see [`docs/build-and-boot.md`](docs/build-and-boot.md#github-releases).
 
 The automatic full-image workflows are path-filtered to OS build inputs:
 
