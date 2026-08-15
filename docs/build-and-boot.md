@@ -143,6 +143,8 @@ artifacts/qemu-smoke.log
 
 It passes when the boot log contains `TALARIA_PHASE1_READY` and either `TALARIA_MODE_RESOLVED` or `TALARIA_MODE_FALLBACK`.
 
+It also grabs a screenshot of the framebuffer via the QEMU monitor (`screendump`) right when it stops waiting — pass or fail, so a stuck/failed boot gets a frame too, not just a passing one — and saves it to `artifacts/qemu-screenshot.png`. In CI this gets embedded directly in the job summary and, on PR builds, posted as a PR comment, so there's a visual without downloading anything. Requires `socat` (talks to the monitor socket) and `imagemagick` (converts the PPM fallback if QEMU's direct PNG `screendump` isn't supported) — both best-effort and not yet verified against a real QEMU version; a missing screenshot doesn't fail the smoke test itself, it just quietly notes "no screenshot" wherever it would have shown up.
+
 Expected target logs:
 
 ```text

@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: pr-build-${{ github.event.pull_request.number || github.ref }}
@@ -96,6 +97,55 @@ jobs:
           path: |
             artifacts/talaria-display-os-*.tar.gz
             artifacts/qemu-smoke.log
+            artifacts/qemu-screenshot.png
           compression-level: 0
           retention-days: 7
           if-no-files-found: error
+
+      - name: Add QEMU screenshot to job summary
+        if: always()
+        shell: bash
+        run: |
+          screenshot="artifacts/qemu-screenshot.png"
+          if [[ ! -s "$screenshot" ]]; then
+            echo "No QEMU screenshot was captured for this run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### QEMU boot screenshot"
+            echo
+            echo "![QEMU boot screenshot](data:image/png;base64,$(base64 -w0 "$screenshot"))"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Best-effort: the screenshot capture in qemu-smoke-test.sh hasn't
+      # been verified against a real QEMU version yet (no QEMU available
+      # to test it while writing this). If it never produces a file,
+      # this just quietly notes that in a PR comment rather than failing
+      # the build over it - the smoke test's pass/fail is what gates the
+      # actual job status.
+      - name: Comment QEMU screenshot on PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          pr_number="${{ github.event.pull_request.number }}"
+          screenshot="artifacts/qemu-screenshot.png"
+
+          if [[ ! -s "$screenshot" ]]; then
+            gh pr comment "$pr_number" --body "QEMU smoke test ran for this build (run #${{ github.run_number }}) but no screenshot was captured - see the workflow run for serial console logs."
+            exit 0
+          fi
+
+          b64="$(base64 -w0 "$screenshot")"
+          if [[ "${#b64}" -gt 60000 ]]; then
+            gh pr comment "$pr_number" --body "QEMU smoke test screenshot captured for run #${{ github.run_number }}, but too large to inline in a comment - download it from the workflow run's artifact instead."
+            exit 0
+          fi
+
+          body="### QEMU boot screenshot (run #${{ github.run_number }})
+
+          ![QEMU boot screenshot](data:image/png;base64,$b64)
+
+          Full serial console log and the downloadable image are in this run's workflow artifact."
+          gh pr comment "$pr_number" --body "$body"

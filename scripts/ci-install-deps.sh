@@ -29,6 +29,8 @@ sudo apt-get install -y --no-install-recommends \
   perl \
   python3 \
   qemu-system-x86 \
+  socat \
+  imagemagick \
   rsync \
   sed \
   tar \
@@ -48,7 +50,12 @@ sudo apt-get install -y --no-install-recommends \
   texinfo
 
 # Buildroot builds most of its own host tool dependencies from source
-# (host-cmake, host-ninja, etc.), so the extras above are a best-effort
-# list for whatever the WPEWebKit/Cog/Mesa host build additionally
-# expects to already be on PATH. Not verified against an actual build;
-# if a build fails on a missing host tool, add it here.
+# (host-cmake, host-ninja, etc.), so the autoconf..texinfo block above
+# is a best-effort list for whatever the WPEWebKit/Cog/Mesa host build
+# additionally expects to already be on PATH. Not verified against an
+# actual build; if a build fails on a missing host tool, add it here.
+#
+# socat and imagemagick are unrelated to the Buildroot build itself -
+# they're for scripts/qemu-smoke-test.sh's screenshot capture (socat
+# talks to the QEMU monitor socket, imagemagick converts the PPM
+# fallback to PNG if QEMU's direct PNG screendump isn't supported).

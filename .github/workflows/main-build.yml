@@ -91,9 +91,25 @@ jobs:
           path: |
             artifacts/talaria-display-os-*.tar.gz
             artifacts/qemu-smoke.log
+            artifacts/qemu-screenshot.png
           compression-level: 0
           retention-days: 30
           if-no-files-found: error
+
+      - name: Add QEMU screenshot to job summary
+        if: always()
+        shell: bash
+        run: |
+          screenshot="artifacts/qemu-screenshot.png"
+          if [[ ! -s "$screenshot" ]]; then
+            echo "No QEMU screenshot was captured for this run." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          {
+            echo "### QEMU boot screenshot"
+            echo
+            echo "![QEMU boot screenshot](data:image/png;base64,$(base64 -w0 "$screenshot"))"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Only reached if the QEMU smoke test above passed - a build that
       # doesn't boot doesn't touch the release, on top of the 30-day
@@ -115,10 +131,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           short_sha="$(git rev-parse --short HEAD)"
+          # qemu-screenshot.png is best-effort (see qemu-smoke-test.sh) and
+          # may not exist even on a passing run; `gh release create` hard-fails
+          # on a missing file argument, so only include it if it's really there.
+          release_assets=(artifacts/talaria-display-os-*.tar.gz artifacts/qemu-smoke.log)
+          if [[ -s artifacts/qemu-screenshot.png ]]; then
+            release_assets+=(artifacts/qemu-screenshot.png)
+          fi
           gh release delete dev-latest --yes --cleanup-tag || true
           gh release create dev-latest \
-            artifacts/talaria-display-os-*.tar.gz \
-            artifacts/qemu-smoke.log \
+            "${release_assets[@]}" \
             --title "Latest main build (run #${{ github.run_number }}, $short_sha)" \
             --notes "Automatically replaced on every Main Build run that passes the QEMU boot smoke test - this is the current build, not a version history. Built from commit $short_sha, workflow run #${{ github.run_number }}.
 
