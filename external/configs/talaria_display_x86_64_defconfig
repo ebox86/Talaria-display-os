@@ -48,28 +48,36 @@ BR2_PACKAGE_HOST_MTOOLS=y
 
 # --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS at runtime ---
 #
-# BEST-EFFORT: these symbol names are not verified against an actual
-# Buildroot 2026.05.1 checkout — there was no Linux host available to
-# run menuconfig against this pinned version while writing this. If a
-# name below is wrong, Buildroot silently drops it rather than erroring,
-# so scripts/verify-browser-packages.sh checks the *resolved* .config
-# for these exact symbols right after configuring and before the full
-# build, so a bad name fails in seconds instead of after a multi-hour
-# WPEWebKit build. Treat a first-run failure here as expected, not a
-# regression; fix with `make O=$OUTPUT_DIR menuconfig` on Linux and
-# `./scripts/save-defconfig.sh`.
+# Symbol names below are now verified against the actual Buildroot
+# 2026.05.1 source (downloaded and read package/{wpewebkit,cog,mesa3d}
+# /Config.in directly - not guessed, not summarized secondhand). What's
+# still unverified is whether the full from-source compile actually
+# succeeds; scripts/verify-browser-packages.sh's fast-fail check only
+# confirms these symbols *resolved*, not that the build completes.
 #
-# Iteration 1 (first real CI run) failed: BR2_PACKAGE_WPEWEBKIT/COG/
-# COG_PLATFORM_DRM all failed to resolve, while the Mesa/DRM/EGL lines
-# below resolved fine. Root cause per Buildroot's actual wpewebkit
-# Config.in: WPEWebKit's own EGL implementation has a hard dependency
-# on an EGL-capable Wayland backend (libwayland-egl), which we never
-# enabled at all. This does NOT mean a Wayland compositor runs at
-# runtime — Cog's DRM backend still owns the actual on-screen
-# rendering via KMS, same as before. It's a build-time library
-# dependency of WPEWebKit's EGL code, not a runtime architecture
-# change; the "no X11/Wayland compositor" decision in
-# docs/display-runtime-design.md still holds.
+# History, for whoever hits this again: iteration 1 (first real CI
+# run, PR #4) failed with WPEWEBKIT/COG/COG_PLATFORM_DRM all missing.
+# Root-caused by downloading the real Buildroot source and reading the
+# actual Config.in files instead of continuing to guess:
+#   - wpewebkit needs BR2_PACKAGE_HAS_LIBGLES, provided by
+#     `select BR2_PACKAGE_HAS_LIBGLES` on BR2_PACKAGE_MESA3D_OPENGL_ES.
+#     The defconfig had BR2_PACKAGE_MESA3D_OPENGL_ES2, which doesn't
+#     exist in this Buildroot version (no ES1/ES2 split - just one
+#     "OpenGL ES" option) - silently dropped, so HAS_LIBGLES was never
+#     provided, so wpewebkit's `depends on BR2_PACKAGE_HAS_LIBGLES`
+#     failed, cascading to cog (`depends on BR2_PACKAGE_WPEWEBKIT`).
+#   - wpewebkit's Config.in already has `select BR2_PACKAGE_WAYLAND`
+#     and `select BR2_PACKAGE_WAYLAND_PROTOCOLS` itself once enabled -
+#     no need to set those explicitly in this defconfig (an earlier
+#     attempt did; removed as redundant once the real dependency was
+#     found). This does NOT mean a Wayland compositor runs at runtime -
+#     Cog's DRM backend still owns actual on-screen rendering via KMS.
+#     It's a build-time library dependency of WPEWebKit's own EGL
+#     implementation. The "no X11/Wayland compositor" decision in
+#     docs/display-runtime-design.md still holds.
+#   - GCC version was not the issue: this Buildroot's default internal
+#     toolchain is gcc 14.x for x86_64, well above wpewebkit's gcc >=11
+#     requirement.
 #
 # Software rendering (Mesa llvmpipe via the swrast gallium driver) is
 # the default because target hardware GPUs are unknown
@@ -81,11 +89,9 @@ BR2_PACKAGE_HOST_MTOOLS=y
 BR2_PACKAGE_LIBDRM=y
 BR2_PACKAGE_MESA3D=y
 BR2_PACKAGE_MESA3D_OPENGL_EGL=y
-BR2_PACKAGE_MESA3D_OPENGL_ES2=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
 BR2_PACKAGE_MESA3D_GBM=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST=y
-BR2_PACKAGE_WAYLAND=y
-BR2_PACKAGE_WAYLAND_PROTOCOLS=y
 BR2_PACKAGE_WPEWEBKIT=y
 BR2_PACKAGE_COG=y
 BR2_PACKAGE_COG_PLATFORM_DRM=y

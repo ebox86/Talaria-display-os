@@ -23,10 +23,17 @@ required_symbols=(
   BR2_PACKAGE_LIBDRM
   BR2_PACKAGE_MESA3D
   BR2_PACKAGE_MESA3D_OPENGL_EGL
+  BR2_PACKAGE_MESA3D_OPENGL_ES
   BR2_PACKAGE_MESA3D_GBM
   BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SWRAST
-  BR2_PACKAGE_WAYLAND
-  BR2_PACKAGE_WAYLAND_PROTOCOLS
+  # These two are what wpewebkit's Config.in actually `depends on` -
+  # checking them directly, not just the Mesa options that are supposed
+  # to provide them, is what would have caught the MESA3D_OPENGL_ES2-
+  # doesn't-exist bug (iteration 1) instead of it silently cascading
+  # into wpewebkit/cog failing for a reason one step removed from the
+  # actual defconfig typo.
+  BR2_PACKAGE_HAS_LIBEGL
+  BR2_PACKAGE_HAS_LIBGLES
   BR2_PACKAGE_WPEWEBKIT
   BR2_PACKAGE_COG
   BR2_PACKAGE_COG_PLATFORM_DRM
