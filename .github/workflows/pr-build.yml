@@ -62,17 +62,30 @@ jobs:
             ${{ runner.os }}-buildroot-${{ steps.buildroot.outputs.version }}-
             ${{ runner.os }}-buildroot-
 
-      - name: Cache Buildroot host toolchain
+      # Covers host toolchain AND target package build state (including
+      # output/build/wpewebkit-*, by far the slowest thing this repo
+      # builds at ~3+ hours from cold). Keyed by run_id so every run
+      # saves a fresh cache entry rather than trying to exact-match a
+      # key that would invalidate on every defconfig edit - restore-keys
+      # falls back to the most recent prior entry regardless of exact
+      # key, so iterating on the defconfig (which this repo is actively
+      # doing right now) doesn't force WPEWebKit to rebuild from zero
+      # every single time. Buildroot's own per-package stamp/hash
+      # tracking is what decides whether a changed config actually
+      # requires rebuilding a given package - this cache only needs to
+      # preserve enough prior state for Buildroot to make that call
+      # itself, not to be exactly right about what changed.
+      - name: Cache Buildroot build state
         uses: actions/cache@v5
         with:
           path: |
             output/host
-            output/build/host-*
-            output/build/toolchain-*
-            output/build/linux-headers-*
-          key: ${{ runner.os }}-buildroot-host-${{ steps.buildroot.outputs.version }}-${{ hashFiles('buildroot-version.txt', 'external/**', 'scripts/build.sh', 'scripts/save-defconfig.sh') }}
+            output/build
+            output/target
+            output/staging
+          key: ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-${{ github.run_id }}
           restore-keys: |
-            ${{ runner.os }}-buildroot-host-${{ steps.buildroot.outputs.version }}-
+            ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-
 
       - name: Install host dependencies
         run: ./scripts/ci-install-deps.sh

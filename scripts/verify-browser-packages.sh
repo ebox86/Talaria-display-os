@@ -73,4 +73,21 @@ if grep -qx 'BR2_LEGACY=y' "$config_file"; then
   exit 1
 fi
 
+# Cog's Wayland platform (COG_PLATFORM_FDO) defaults to 'y' in Cog's own
+# Config.in and was never meant to be built here - only --platform=drm is
+# ever launched at runtime (see talaria-browser-supervise) - but it pulls
+# in cairo, which nothing else in this defconfig provides, so it fails
+# ~3+ hours in, after WPEWebKit itself has already built from source
+# (iteration 4). Check for it explicitly so a future re-enable (e.g. an
+# unrelated defconfig edit that resets it to its Kconfig default) fails
+# in seconds instead of silently reintroducing that multi-hour loss.
+if grep -qx 'BR2_PACKAGE_COG_PLATFORM_FDO=y' "$config_file"; then
+  echo "$config_file has BR2_PACKAGE_COG_PLATFORM_FDO=y." >&2
+  echo "This platform is unused at runtime (only --platform=drm is ever launched)" >&2
+  echo "and fails on a missing cairo dependency after WPEWebKit has already built" >&2
+  echo "from source (~3+ hours). Set '# BR2_PACKAGE_COG_PLATFORM_FDO is not set' in" >&2
+  echo "external/configs/talaria_display_x86_64_defconfig instead." >&2
+  exit 1
+fi
+
 echo "Browser-stack packages resolved correctly in $config_file, no legacy options set."

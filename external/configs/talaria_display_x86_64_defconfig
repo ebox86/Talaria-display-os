@@ -108,4 +108,14 @@ BR2_PACKAGE_MESA3D_GBM=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
 BR2_PACKAGE_WPEWEBKIT=y
 BR2_PACKAGE_COG=y
+# Iteration 3 (third real CI run): WPEWebKit itself built successfully
+# this time (~3h15m) - real progress. Failed one step later, in Cog:
+# BR2_PACKAGE_COG_PLATFORM_FDO (the Wayland backend) defaults to `y` in
+# Cog's own Config.in and was never explicitly disabled here, so Cog
+# tried to build a platform we don't use at runtime (only --platform=drm
+# is ever launched - see talaria-browser-supervise) and failed on cairo,
+# a dependency of that unused Wayland platform code path that nothing
+# else in this defconfig pulls in. Disabling it entirely is both the
+# fix and the more correct config for what this appliance actually is.
+# BR2_PACKAGE_COG_PLATFORM_FDO is not set
 BR2_PACKAGE_COG_PLATFORM_DRM=y
