@@ -16,6 +16,10 @@ Phase 3 adds mode resolution and browser supervision on top of that: the image d
 
 The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). The WPE/Cog/Mesa Buildroot package wiring has now been validated by a real from-source CI build (PR #4, run 4): the defconfig resolves cleanly, WPEWebKit/Cog/Mesa compile, and the resulting image boots in QEMU and correctly falls back to the diagnostics screen when no Talaria server is reachable. `scripts/verify-browser-packages.sh` still catches an obviously wrong or renamed symbol fast, before paying the multi-hour build cost again. What's still unproven is real hardware: no image has been flashed to or booted on an actual target machine yet, and the `dashboard`/`signage` browser path itself (WPE WebKit actually rendering the Talaria dashboard) has only been exercised against the diagnostics fallback, not a real server. See `docs/hardware-inventory.md`.
 
+### UEFI boot (newer PCs)
+
+`talaria_display_x86_64_defconfig` is legacy-BIOS-only (MBR + GRUB i386-pc) - fine for the 2006-2013 fleet this project started with, but PCs that have dropped CSM/legacy-BIOS entirely can't boot it at all. `talaria_display_x86_64_efi_defconfig` is a UEFI counterpart (GPT + ESP + GRUB x86_64-efi) that otherwise shares the same rootfs overlay, kernel fragment, and browser-stack packages. Its Kconfig symbols and genimage/post-image layout were checked against Buildroot's own `board/pc/{genimage-efi.cfg,post-image-efi.sh,grub-efi.cfg}` reference for this pinned version and merge cleanly, but **unlike the BIOS defconfig it has no passing from-source CI build behind it yet** - it isn't wired into CI (that would double every build's ~3+ hour cost) and needs a manual build to actually prove out: `DEFCONFIG=talaria_display_x86_64_efi_defconfig ./scripts/build.sh`.
+
 ## Repo Layout
 
 ```text
@@ -39,15 +43,19 @@ external/
   external.mk
   configs/
     talaria_display_x86_64_defconfig
+    talaria_display_x86_64_efi_defconfig
   board/
     talaria/
       display-x86_64/
         genimage-bios.cfg
+        genimage-efi.cfg
         grub-bios.cfg
+        grub-efi.cfg
         linux-video.fragment
         rootfs_overlay/
         post-build.sh
         post-image.sh
+        post-image-efi.sh
 docs/
   build-and-boot.md
   first-boot-test.md

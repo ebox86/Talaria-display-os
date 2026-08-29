@@ -1,0 +1,83 @@
+# UEFI counterpart to talaria_display_x86_64_defconfig, for PCs that
+# have dropped CSM/legacy-BIOS boot entirely (increasingly common on
+# newer hardware, especially with Secure Boot enforced). Everything
+# below is identical to the BIOS defconfig except the GRUB target and
+# the post-image script wiring (see genimage-efi.cfg/post-image-efi.sh
+# for why EFI needs its own post-image script, not just its own
+# genimage config) - see talaria_display_x86_64_defconfig itself for
+# the full package-selection history/rationale, which applies here
+# unchanged.
+#
+# NOT YET VALIDATED BY A REAL BUILD as of the commit that added this
+# file - unlike the BIOS defconfig, which has a passing from-source CI
+# run behind it (PR #4). Kconfig symbols here (BR2_TARGET_GRUB2_X86_64_EFI
+# in particular) were checked against the real pinned Buildroot 2026.05.1
+# source (boot/grub2/Config.in) and the genimage/post-image layout was
+# checked against Buildroot's own board/pc/{genimage-efi.cfg,
+# post-image-efi.sh,grub-efi.cfg} reference for this same version - not
+# guessed - but per this project's own hard-won lesson (see the BIOS
+# defconfig's iteration 1-4 history), a symbol resolving correctly is
+# necessary, not sufficient. Treat the first real CI build of this
+# defconfig as the actual test.
+BR2_x86_64=y
+BR2_TOOLCHAIN_BUILDROOT_WCHAR=y
+BR2_TOOLCHAIN_BUILDROOT_CXX=y
+BR2_TARGET_GENERIC_HOSTNAME="talaria-display"
+BR2_TARGET_GENERIC_ISSUE="Talaria Display OS phase 1 (UEFI)"
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
+BR2_SYSTEM_DHCP="eth0"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/rootfs_overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/post-build.sh"
+# No BR2_ROOTFS_POST_SCRIPT_ARGS/support/scripts/genimage.sh chaining
+# here like the BIOS defconfig has: genimage-efi.cfg's root partition
+# UUID and grub-efi.cfg's root=PARTUUID= both need the real generated
+# rootfs UUID substituted in first, so post-image-efi.sh invokes
+# genimage itself after doing that substitution, matching Buildroot's
+# own board/pc/post-image-efi.sh reference.
+BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/post-image-efi.sh"
+BR2_KERNEL_HEADERS_AS_KERNEL=y
+BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_6_12=y
+BR2_LINUX_KERNEL=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION=y
+BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.94"
+BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG=y
+BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/linux-video.fragment"
+BR2_LINUX_KERNEL_NEEDS_HOST_OPENSSL=y
+BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
+BR2_LINUX_KERNEL_INSTALL_TARGET=y
+BR2_TARGET_ROOTFS_EXT2=y
+BR2_TARGET_ROOTFS_EXT2_4=y
+BR2_TARGET_ROOTFS_EXT2_SIZE="1536M"
+# BR2_TARGET_ROOTFS_TAR is not set
+BR2_TARGET_GRUB2=y
+# BR2_TARGET_GRUB2_I386_PC is a menuconfig-time default select, not a
+# real toggle here - explicitly choosing X86_64_EFI instead is what
+# takes this off the legacy-BIOS path. See boot/grub2/Config.in: this
+# and I386_PC are independent bools, not a mutually-exclusive choice,
+# but only one boot strategy makes sense per image/genimage layout.
+BR2_TARGET_GRUB2_X86_64_EFI=y
+BR2_PACKAGE_CA_CERTIFICATES=y
+BR2_PACKAGE_ETHTOOL=y
+BR2_PACKAGE_IPROUTE2=y
+BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_UTIL_LINUX=y
+BR2_PACKAGE_UTIL_LINUX_MOUNT=y
+BR2_PACKAGE_UTIL_LINUX_BLKID=y
+BR2_PACKAGE_UTIL_LINUX_LSBLK=y
+BR2_PACKAGE_HOST_GENIMAGE=y
+BR2_PACKAGE_HOST_DOSFSTOOLS=y
+BR2_PACKAGE_HOST_MTOOLS=y
+
+# --- Browser stack (Phase 3): identical to talaria_display_x86_64_defconfig ---
+# See that file for the full iteration 1-4 history behind this exact
+# symbol set. Nothing here is EFI-specific.
+BR2_PACKAGE_LIBDRM=y
+BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_OPENGL_EGL=y
+BR2_PACKAGE_MESA3D_OPENGL_ES=y
+BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
+BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_COG=y
+# BR2_PACKAGE_COG_PLATFORM_FDO is not set
+BR2_PACKAGE_COG_PLATFORM_DRM=y

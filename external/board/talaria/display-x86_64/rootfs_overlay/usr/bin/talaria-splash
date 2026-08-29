@@ -9,30 +9,35 @@ if [ ! -w "$tty" ]; then
 fi
 
 draw_frame() {
+  # Plain-ASCII banner (no Unicode box-drawing glyphs in the letters
+  # themselves, only in the surrounding frame) - more likely to render
+  # correctly on whatever font a real old machine's framebuffer console
+  # actually falls back to. Row count below changed from the previous
+  # version (5 art rows, not 6) - write_status()'s cursor rows were
+  # recomputed to match, not left stale.
   cat > "$tty" <<'EOF'
 [2J[H[?25l
 
 
-          ██████████████████████████████████████████████████
-          ██                                              ██
-          ██     ████████╗ █████╗ ██╗      █████╗        ██
-          ██     ╚══██╔══╝██╔══██╗██║     ██╔══██╗       ██
-          ██        ██║   ███████║██║     ███████║       ██
-          ██        ██║   ██╔══██║██║     ██╔══██║       ██
-          ██        ██║   ██║  ██║███████╗██║  ██║       ██
-          ██        ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝       ██
-          ██                                              ██
-          ██               DISPLAY OS                     ██
-          ██                                              ██
-          ██████████████████████████████████████████████████
+          █████████████████████████████████████████████████████████
+          ██                                                     ██
+          ██     _____  _    _        _    ____  ___    _        ██
+          ██    |_   _|/ \  | |      / \  |  _ \|_ _|  / \       ██
+          ██      | | / _ \ | |     / _ \ | |_) || |  / _ \      ██
+          ██      | |/ ___ \| |___ / ___ \|  _ < | | / ___ \     ██
+          ██      |_/_/   \_\_____/_/   \_\_| \_\___/_/   \_\    ██
+          ██                                                     ██
+          ██                      DISPLAY OS                     ██
+          ██                                                     ██
+          █████████████████████████████████████████████████████████
 
 EOF
 }
 
 write_status() {
-  printf '\033[18;11H%-58s' "Status: $message" > "$tty"
-  printf '\033[19;11H%-58s' "Stage:  $state" > "$tty"
-  printf '\033[21;11H%-58s' "This display will continue automatically." > "$tty"
+  printf '\033[17;11H%-58s' "Status: $message" > "$tty"
+  printf '\033[18;11H%-58s' "Stage:  $state" > "$tty"
+  printf '\033[20;11H%-58s' "This display will continue automatically." > "$tty"
 }
 
 case "$state" in

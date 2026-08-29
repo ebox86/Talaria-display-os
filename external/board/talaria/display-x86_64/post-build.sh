@@ -41,12 +41,22 @@ copy_grub_boot_img() {
 }
 
 mkdir -p "$target_dir/data/talaria"
-mkdir -p "$target_dir/boot/grub"
-cp -f "$board_dir/grub-bios.cfg" "$target_dir/boot/grub/grub.cfg"
 
 find "$target_dir/etc/init.d" -maxdepth 1 -type f -name 'S*talaria-*' -exec chmod 0755 {} +
 find "$target_dir/usr/bin" -maxdepth 1 -type f -name 'talaria-*' -exec chmod 0755 {} +
 
-copy_grub_boot_img
+# Detect boot strategy the same way as Buildroot's own board/pc
+# reference does: BR2_TARGET_GRUB2_X86_64_EFI populates
+# $BINARIES_DIR/efi-part/ during its own package install step (which
+# runs before post-build scripts); BR2_TARGET_GRUB2_I386_PC does not.
+if [[ -n "${BINARIES_DIR:-}" && -d "$BINARIES_DIR/efi-part" ]]; then
+  mkdir -p "$BINARIES_DIR/efi-part/EFI/BOOT"
+  cp -f "$board_dir/grub-efi.cfg" "$BINARIES_DIR/efi-part/EFI/BOOT/grub.cfg"
+  echo "Staged EFI grub.cfg -> $BINARIES_DIR/efi-part/EFI/BOOT/grub.cfg"
+else
+  mkdir -p "$target_dir/boot/grub"
+  cp -f "$board_dir/grub-bios.cfg" "$target_dir/boot/grub/grub.cfg"
+  copy_grub_boot_img
+fi
 
 echo "Talaria Display OS rootfs prepared at $target_dir"

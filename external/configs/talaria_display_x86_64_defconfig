@@ -33,7 +33,14 @@ BR2_TARGET_ROOTFS_EXT2_SIZE="1536M"
 # BR2_TARGET_ROOTFS_TAR is not set
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_I386_PC=y
-BR2_TARGET_GRUB2_CFG="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/grub-bios.cfg"
+# BR2_TARGET_GRUB2_CFG (the line that used to be here) is not a real
+# Buildroot Kconfig symbol in this version - checked against the actual
+# boot/grub2/Config.in during the UEFI-support pass and confirmed only
+# BR2_TARGET_GRUB2_BUILTIN_CONFIG_PC/_EFI exist, neither of which is
+# what this was trying to be. It was silently dropped by Buildroot the
+# whole time; post-build.sh's `cp -f grub-bios.cfg .../boot/grub/grub.cfg`
+# is the thing that actually installs our grub config, and always has
+# been. Removed as dead weight, not a behavior change.
 BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_ETHTOOL=y
 BR2_PACKAGE_IPROUTE2=y
