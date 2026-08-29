@@ -33,7 +33,7 @@
 #   TALARIA_CAGE_ARGS             default -s
 #   TALARIA_COG_PLATFORM          default drm (direct DRM fallback only)
 #   TALARIA_COG_PLATFORM_PARAMS   default empty (direct DRM fallback only)
-#   TALARIA_COG_WL_PLATFORM       default wl
+#   TALARIA_COG_WL_PLATFORM       default wayland
 #   TALARIA_BROWSER_POLL_INTERVAL default 5 (seconds)
 #   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
 #   TALARIA_BROWSER_MAX_CRASHES   default 3 (consecutive crashes before giving-up signal)
@@ -56,7 +56,7 @@ cage_cmd="${TALARIA_CAGE_CMD:-cage}"
 cage_args="${TALARIA_CAGE_ARGS--s}"
 browser_platform="${TALARIA_COG_PLATFORM:-drm}"
 browser_platform_params="${TALARIA_COG_PLATFORM_PARAMS-}"
-cog_wl_platform="${TALARIA_COG_WL_PLATFORM:-wl}"
+cog_wl_platform="${TALARIA_COG_WL_PLATFORM:-wayland}"
 poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
 max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
 max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"

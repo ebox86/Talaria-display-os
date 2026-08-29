@@ -65,4 +65,8 @@ repair_grub2_image_cache
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"
 
+if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  "$repo_root/scripts/verify-browser-runtime-files.sh"
+fi
+
 echo "Build complete. Images are under: $output_dir/images"
