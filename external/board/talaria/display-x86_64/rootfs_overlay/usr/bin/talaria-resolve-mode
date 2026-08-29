@@ -17,6 +17,7 @@
 #   TALARIA_STATE_LOG      default /data/talaria/display-mode.log
 #   TALARIA_MODE_STATE     default /run/talaria/mode-state.conf
 #   TALARIA_PING_CMD       default "ping -c 1 -W 2"
+#   TALARIA_FETCH_CMD      default "wget -q -O -"
 #   TALARIA_CONSOLE_DEVICE default /dev/console
 #
 # TALARIA_MODE_STATE is the machine-readable handoff talaria-browser-supervise
@@ -30,6 +31,7 @@ data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
 state_log="${TALARIA_STATE_LOG:-/data/talaria/display-mode.log}"
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
 ping_cmd="${TALARIA_PING_CMD:-ping -c 1 -W 2}"
+fetch_cmd="${TALARIA_FETCH_CMD:-wget -q -O -}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
 console_status() {
@@ -58,20 +60,126 @@ is_http_url() {
   esac
 }
 
+quote_state_value() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g'
+}
+
+strip_assignment_value() {
+  value="$1"
+  case "$value" in
+    \"*\")
+      value="${value#\"}"
+      value="${value%\"}"
+      ;;
+  esac
+  printf '%s' "$value"
+}
+
+normalize_refresh_seconds() {
+  candidate="$1"
+  case "$candidate" in
+    ''|*[!0-9]*) return 0 ;;
+    *)
+      if [ "$candidate" -lt 5 ]; then
+        echo 5
+      elif [ "$candidate" -gt 3600 ]; then
+        echo 3600
+      else
+        echo "$candidate"
+      fi
+      ;;
+  esac
+}
+
+is_url_query_value_safe() {
+  case "$1" in
+    ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+fetch_server_assignment() {
+  [ -n "$assignment_url" ] || return 2
+  [ "$device_id" != "unconfigured" ] || return 2
+  is_http_url "$assignment_url" || return 2
+  is_url_query_value_safe "$device_id" || return 2
+  if [ -n "$device_token" ]; then
+    is_url_query_value_safe "$device_token" || return 2
+  fi
+
+  tmp_file="${mode_state}.assignment.$$"
+  sep="?"
+  case "$assignment_url" in
+    *\?*) sep="&" ;;
+  esac
+  request_url="${assignment_url}${sep}deviceId=${device_id}"
+  if [ -n "$device_token" ]; then
+    request_url="${request_url}&deviceToken=${device_token}"
+  fi
+
+  if ! $fetch_cmd "$request_url" > "$tmp_file" 2>/dev/null; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    case "$line" in
+      TALARIA_DISPLAY_MODE=*)
+        configured_mode="$(strip_assignment_value "${line#TALARIA_DISPLAY_MODE=}")"
+        ;;
+      TALARIA_DISPLAY_URL=*)
+        display_url="$(strip_assignment_value "${line#TALARIA_DISPLAY_URL=}")"
+        ;;
+      TALARIA_SERVER_HOST=*)
+        server_host="$(strip_assignment_value "${line#TALARIA_SERVER_HOST=}")"
+        ;;
+      TALARIA_ASSIGNMENT_REFRESH_SECONDS=*)
+        assignment_refresh_seconds="$(normalize_refresh_seconds "$(strip_assignment_value "${line#TALARIA_ASSIGNMENT_REFRESH_SECONDS=}")")"
+        ;;
+    esac
+  done < "$tmp_file"
+  rm -f "$tmp_file"
+  assignment_source="server"
+  return 0
+}
+
 # Reset before sourcing so a stale value from the caller's environment
 # can't be mistaken for a value that came from config.
 TALARIA_SERVER_HOST=
+TALARIA_SERVER_BASE_URL=
+TALARIA_ASSIGNMENT_URL=
 TALARIA_DISPLAY_MODE=
 TALARIA_DISPLAY_URL=
 TALARIA_DEVICE_ID=
+TALARIA_DEVICE_TOKEN=
 
 [ -f "$etc_conf" ] && . "$etc_conf"
 [ -f "$data_conf" ] && . "$data_conf"
 
-configured_mode="${TALARIA_DISPLAY_MODE:-dashboard}"
+configured_mode="${TALARIA_DISPLAY_MODE:-diagnostics}"
 device_id="${TALARIA_DEVICE_ID:-unconfigured}"
 display_url="${TALARIA_DISPLAY_URL:-}"
 server_host="${TALARIA_SERVER_HOST:-}"
+server_base_url="${TALARIA_SERVER_BASE_URL:-}"
+assignment_url="${TALARIA_ASSIGNMENT_URL:-}"
+device_token="${TALARIA_DEVICE_TOKEN:-}"
+assignment_source="local"
+assignment_fetch_status="disabled"
+assignment_refresh_seconds=""
+
+if [ -z "$assignment_url" ] && [ -n "$server_base_url" ]; then
+  assignment_url="${server_base_url%/}/api/workflow/display/assignment.env"
+fi
+
+if [ -n "$assignment_url" ]; then
+  mkdir -p "$(dirname "$mode_state")" 2>/dev/null
+  if fetch_server_assignment; then
+    assignment_fetch_status="ok"
+  else
+    assignment_fetch_status="failed"
+    console_status "TALARIA_ASSIGNMENT_FETCH_FAILED url=$assignment_url device_id=$device_id"
+  fi
+fi
 
 effective_mode="$configured_mode"
 reason=""
@@ -97,6 +205,11 @@ mkdir -p "$(dirname "$state_log")" 2>/dev/null
   echo "configured_mode: $configured_mode"
   echo "effective_mode: $effective_mode"
   echo "display_url: ${display_url:-unset}"
+  echo "assignment_source: $assignment_source"
+  echo "assignment_fetch_status: $assignment_fetch_status"
+  if [ -n "$assignment_refresh_seconds" ]; then
+    echo "assignment_refresh_seconds: $assignment_refresh_seconds"
+  fi
   if [ -n "$reason" ]; then
     echo "fallback_reason: $reason"
   fi
@@ -113,10 +226,13 @@ fi
 
 mkdir -p "$(dirname "$mode_state")" 2>/dev/null
 {
-  echo "EFFECTIVE_MODE=$effective_mode"
-  echo "DISPLAY_URL=$state_url"
-  echo "FALLBACK_REASON=\"$reason\""
-  echo "DEVICE_ID=$device_id"
+  echo "EFFECTIVE_MODE=\"$(quote_state_value "$effective_mode")\""
+  echo "DISPLAY_URL=\"$(quote_state_value "$state_url")\""
+  echo "FALLBACK_REASON=\"$(quote_state_value "$reason")\""
+  echo "DEVICE_ID=\"$(quote_state_value "$device_id")\""
+  echo "ASSIGNMENT_SOURCE=\"$(quote_state_value "$assignment_source")\""
+  echo "ASSIGNMENT_FETCH_STATUS=\"$(quote_state_value "$assignment_fetch_status")\""
+  echo "ASSIGNMENT_REFRESH_SECONDS=\"$(quote_state_value "$assignment_refresh_seconds")\""
   echo "RESOLVED_AT=\"$(date)\""
 } > "$mode_state" 2>/dev/null
 

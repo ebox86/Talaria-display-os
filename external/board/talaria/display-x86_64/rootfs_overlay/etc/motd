@@ -3,7 +3,7 @@ Talaria Display OS phase 1
 This image is for hardware bring-up only:
 - wired DHCP
 - persistent /data/talaria/phase1.log
-- console splash on tty1
+- PNG splash on the primary framebuffer
 - no browser yet
 
 Inspect:

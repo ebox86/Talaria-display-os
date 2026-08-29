@@ -1,0 +1,18 @@
+#!/bin/sh
+
+case "$1" in
+  start)
+    /usr/bin/talaria-splash boot "Starting Talaria Display OS" || true
+    ;;
+  stop)
+    ;;
+  restart|reload)
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0

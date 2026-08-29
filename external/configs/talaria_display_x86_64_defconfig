@@ -4,7 +4,6 @@ BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_TARGET_GENERIC_HOSTNAME="talaria-display"
 BR2_TARGET_GENERIC_ISSUE="Talaria Display OS phase 1"
 BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
-BR2_SYSTEM_DHCP="eth0"
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/rootfs_overlay"
 BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/post-build.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="support/scripts/genimage.sh $(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/board/talaria/display-x86_64/post-image.sh"
@@ -25,7 +24,7 @@ BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_LINUX_KERNEL_INSTALL_TARGET=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-# 256M was enough for the Phase 1 console-only image. WPEWebKit, Mesa,
+# 256M was enough for the original Phase 1 text-only image. WPEWebKit, Mesa,
 # ICU, and their transitive deps push the rootfs well past that; 1536M
 # leaves headroom. Re-check against actual `du -sh output/target` once
 # the browser stack builds successfully and shrink if there's slack.
@@ -42,18 +41,20 @@ BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_MOUNT=y
 BR2_PACKAGE_UTIL_LINUX_BLKID=y
 BR2_PACKAGE_UTIL_LINUX_LSBLK=y
+BR2_PACKAGE_FBV=y
+BR2_PACKAGE_FBV_PNG=y
 BR2_PACKAGE_HOST_GENIMAGE=y
 BR2_PACKAGE_HOST_DOSFSTOOLS=y
 BR2_PACKAGE_HOST_MTOOLS=y
 
-# --- Browser stack (Phase 3): WPE WebKit + Cog, DRM/KMS at runtime ---
+# --- Browser stack (Phase 3): WPE WebKit + Cage + Cog ---
 #
 # Symbol names below are now verified against the actual Buildroot
 # 2026.05.1 source (downloaded and read package/{wpewebkit,cog,mesa3d}
-# /Config.in directly - not guessed, not summarized secondhand). What's
-# still unverified is whether the full from-source compile actually
-# succeeds; scripts/verify-browser-packages.sh's fast-fail check only
-# confirms these symbols *resolved*, not that the build completes.
+# /Config.in directly - not guessed, not summarized secondhand).
+# scripts/verify-browser-packages.sh's fast-fail check only confirms
+# these symbols *resolved*, not that the full build or VM/runtime path
+# succeeds.
 #
 # History, for whoever hits this again: iteration 1 (first real CI
 # run, PR #4) failed with WPEWEBKIT/COG/COG_PLATFORM_DRM all missing.
@@ -67,14 +68,13 @@ BR2_PACKAGE_HOST_MTOOLS=y
 #     provided, so wpewebkit's `depends on BR2_PACKAGE_HAS_LIBGLES`
 #     failed, cascading to cog (`depends on BR2_PACKAGE_WPEWEBKIT`).
 #   - wpewebkit's Config.in already has `select BR2_PACKAGE_WAYLAND`
-#     and `select BR2_PACKAGE_WAYLAND_PROTOCOLS` itself once enabled -
-#     no need to set those explicitly in this defconfig (an earlier
-#     attempt did; removed as redundant once the real dependency was
-#     found). This does NOT mean a Wayland compositor runs at runtime -
-#     Cog's DRM backend still owns actual on-screen rendering via KMS.
-#     It's a build-time library dependency of WPEWebKit's own EGL
-#     implementation. The "no X11/Wayland compositor" decision in
-#     docs/display-runtime-design.md still holds.
+#     and `select BR2_PACKAGE_WAYLAND_PROTOCOLS` itself once enabled.
+#     The first working browser image launched Cog's DRM backend
+#     directly. Real-site VM testing then exposed repeated
+#     libcogplatform-drm.so crashes after redirects/repaints, so the
+#     runtime default is now Cage as a single-app Wayland compositor
+#     running Cog's Wayland platform. Direct Cog DRM stays built as a
+#     fallback/debug backend.
 #   - GCC version was not the issue: this Buildroot's default internal
 #     toolchain is gcc 14.x for x86_64, well above wpewebkit's gcc >=11
 #     requirement.
@@ -106,16 +106,31 @@ BR2_PACKAGE_MESA3D_OPENGL_EGL=y
 BR2_PACKAGE_MESA3D_OPENGL_ES=y
 BR2_PACKAGE_MESA3D_GBM=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SVGA=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y
 BR2_PACKAGE_WPEWEBKIT=y
+BR2_PACKAGE_CAIRO=y
+BR2_PACKAGE_CAIRO_PNG=y
+BR2_PACKAGE_CAGE=y
 BR2_PACKAGE_COG=y
-# Iteration 3 (third real CI run): WPEWebKit itself built successfully
-# this time (~3h15m) - real progress. Failed one step later, in Cog:
-# BR2_PACKAGE_COG_PLATFORM_FDO (the Wayland backend) defaults to `y` in
-# Cog's own Config.in and was never explicitly disabled here, so Cog
-# tried to build a platform we don't use at runtime (only --platform=drm
-# is ever launched - see talaria-browser-supervise) and failed on cairo,
-# a dependency of that unused Wayland platform code path that nothing
-# else in this defconfig pulls in. Disabling it entirely is both the
-# fix and the more correct config for what this appliance actually is.
-# BR2_PACKAGE_COG_PLATFORM_FDO is not set
+# Direct Cog DRM rendered the local browser test page, but VM testing
+# against neverssl.com repeatedly crashed in libcogplatform-drm.so after
+# redirects/repaints. Keep DRM built as a fallback/debug backend, but
+# ship the deliberate runtime path as Cage + Cog's Wayland backend.
+BR2_PACKAGE_COG_PLATFORM_FDO=y
 BR2_PACKAGE_COG_PLATFORM_DRM=y
+
+# Runtime data Cog/WPE do not fully pull in themselves:
+# - WPEWebKit selects fontconfig/freetype, but those are libraries, not
+#   actual font files. Without installed fonts, a successfully launched
+#   browser can still render missing/blank text. DejaVu gives broad
+#   fallback coverage; Liberation gives common Arial/Times/Courier-like
+#   faces that web dashboards often request.
+# - Cog/libWPE select libxkbcommon, but not the XKB keymap database.
+#   Without xkeyboard-config, libxkbcommon logs:
+#     failed to add default include path /usr/share/X11/xkb
+#   The package lives under Buildroot's x11r7 tree for historical
+#   reasons, but enabling it here does not enable Xorg.
+BR2_PACKAGE_DEJAVU=y
+BR2_PACKAGE_LIBERATION=y
+BR2_PACKAGE_XKEYBOARD_CONFIG=y

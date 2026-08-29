@@ -29,11 +29,23 @@ cat > "$work_dir/fake-browser" <<'EOF'
 # simulate a crash) or sleeps as a stand-in for a running browser.
 echo "$(date) args: $*" >> "$FAKE_BROWSER_LOG"
 if [ "${FAKE_BROWSER_CRASH:-0}" = "1" ]; then
+  sleep "${FAKE_BROWSER_RUNTIME:-0}"
   exit 0
 fi
 sleep 100
 EOF
 chmod +x "$work_dir/fake-browser"
+
+cat > "$work_dir/fake-cage" <<'EOF'
+#!/bin/sh
+echo "$(date) cage args: $*" >> "$FAKE_BROWSER_LOG"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
+  shift
+done
+[ "$#" -gt 0 ] && shift
+exec "$@"
+EOF
+chmod +x "$work_dir/fake-cage"
 
 write_state() {
   local mode="$1" url="$2"
@@ -68,22 +80,26 @@ check() {
 }
 
 start_supervisor() {
-  # $1=crash-mode $2=backoff_base $3=backoff_max. Defaults keep backoff
-  # effectively out of the way (1s, same as poll interval) for scenarios
-  # that aren't specifically testing backoff timing.
+  # $1=crash-mode $2=backoff_base $3=backoff_max $4=browser_runtime
+  # $5=stable_cycles. Defaults keep backoff effectively out of the way
+  # (1s, same as poll interval) for scenarios that aren't specifically
+  # testing backoff timing.
   : > "$work_dir/console.log"
   : > "$work_dir/fake-browser.log"
   rm -rf "$work_dir/run"
   mkdir -p "$work_dir/run"
   TALARIA_MODE_STATE="$work_dir/mode-state.conf" \
+  TALARIA_BROWSER_BACKEND=drm \
   TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
   TALARIA_BROWSER_POLL_INTERVAL=1 \
   TALARIA_BROWSER_BACKOFF_BASE="${2:-1}" \
   TALARIA_BROWSER_BACKOFF_MAX="${3:-1}" \
+  TALARIA_BROWSER_STABLE_CYCLES="${5:-12}" \
   TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
   TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
   FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
   FAKE_BROWSER_CRASH="${1:-0}" \
+  FAKE_BROWSER_RUNTIME="${4:-0}" \
     sh "$supervisor" &
   supervise_pid=$!
 }
@@ -102,6 +118,47 @@ ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard/' || ok=0
 grep -q 'args: --platform=drm http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
 check "launches on valid dashboard state" "$ok"
+
+# --- Scenario 1b: auto backend launches through Cage/Cog Wayland when available ---
+stop_supervisor
+write_state "dashboard" "http://talaria.local/dashboard/"
+: > "$work_dir/console.log"
+: > "$work_dir/fake-browser.log"
+rm -rf "$work_dir/run"
+mkdir -p "$work_dir/run"
+TALARIA_MODE_STATE="$work_dir/mode-state.conf" \
+TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
+TALARIA_CAGE_CMD="$work_dir/fake-cage" \
+TALARIA_BROWSER_POLL_INTERVAL=1 \
+TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
+TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
+FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
+  sh "$supervisor" &
+supervise_pid=$!
+ok=1
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard/' || ok=0
+grep -q 'cage args: -s --' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
+grep -q 'args: --platform=wl http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
+check "auto backend launches through Cage and Cog Wayland" "$ok"
+
+# --- Scenario 1c: a duplicate supervisor exits instead of launching a
+#     second DRM browser owner against the same display.
+ok=1
+TALARIA_MODE_STATE="$work_dir/mode-state.conf" \
+TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
+TALARIA_CAGE_CMD="$work_dir/fake-cage" \
+TALARIA_BROWSER_POLL_INTERVAL=1 \
+TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
+TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
+FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
+  sh "$supervisor" &
+second_supervise_pid=$!
+wait "$second_supervise_pid" 2>/dev/null || ok=0
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING' || ok=0
+launch_count="$(grep -c 'TALARIA_BROWSER_LAUNCH' "$work_dir/console.log" 2>/dev/null)"
+launch_count="${launch_count:-0}"
+[[ "$launch_count" -eq 1 ]] || ok=0
+check "prevents a duplicate supervisor from launching a second browser" "$ok"
 
 # --- Scenario 2: falling back to diagnostics stops the browser ---
 write_state "diagnostics" ""
@@ -170,6 +227,18 @@ launch_count_after_backoff="$(grep -c 'TALARIA_BROWSER_LAUNCH' "$work_dir/consol
 launch_count_after_backoff="${launch_count_after_backoff:-0}"
 [[ "$launch_count_after_backoff" -gt "$launch_count_mid_backoff" ]] || ok=0
 check "backoff delays the relaunch instead of retrying immediately" "$ok"
+
+stop_supervisor
+
+# --- Scenario 7: a browser can draw for a while and still be unhealthy.
+#     It should not be counted as stable after only a few poll cycles; this
+#     catches delayed DRM crashes like the UTM/Cog modeset crash observed
+#     after NeverSSL rendered and redirected.
+write_state "dashboard" "http://talaria.local/delayed-crash/"
+start_supervisor 1 1 1 4 12
+ok=1
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/delayed-crash/ attempts=3' 25 || ok=0
+check "delayed crashes still reach the give-up signal" "$ok"
 
 stop_supervisor
 

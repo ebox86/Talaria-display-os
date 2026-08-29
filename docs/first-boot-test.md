@@ -1,6 +1,6 @@
 # First Boot Test
 
-Use this checklist for the Phase 1 text/network image.
+Use this checklist for the display/network/browser image.
 
 ## Before Boot
 
@@ -14,7 +14,7 @@ Use this checklist for the Phase 1 text/network image.
 The machine should:
 
 - Boot from the USB image.
-- Show the Talaria Display OS console splash.
+- Show the Talaria Display OS PNG splash.
 - Reach BusyBox userspace.
 - Bring up wired networking with DHCP.
 - Create `/data/talaria/phase1.log`.
@@ -23,7 +23,7 @@ The machine should:
 - Create `/data/talaria/display-mode.log`.
 - Include interface, route, and ping output in the log.
 - Resolve an effective display mode and print `TALARIA_MODE_RESOLVED` or `TALARIA_MODE_FALLBACK` to the console (see [`display-runtime-design.md`](display-runtime-design.md#mode-resolution)).
-- If the resolved mode is `dashboard`/`signage` and the browser stack built successfully, print `TALARIA_BROWSER_LAUNCH` to the console (see [`display-runtime-design.md`](display-runtime-design.md#browser-phase)). In `diagnostics` this stays console-only; no browser marker is expected.
+- If the resolved mode is `dashboard`/`signage` and the browser stack built successfully, print `TALARIA_BROWSER_LAUNCH` to the console (see [`display-runtime-design.md`](display-runtime-design.md#browser-phase)). In `diagnostics` this stays local; no browser marker is expected.
 
 ## Commands
 
@@ -52,6 +52,18 @@ EOF
 /etc/init.d/S70talaria-mode-resolve restart
 ```
 
+To test the future server-controlled path without changing the image, configure only identity and the control-plane base URL. Until the server implements the assignment endpoint, this should stay on the local Talaria logo:
+
+```sh
+cat > /data/talaria/display.conf <<'EOF'
+TALARIA_SERVER_BASE_URL=http://192.168.1.50:17444
+TALARIA_DEVICE_ID=display-01
+TALARIA_DEVICE_TOKEN=1234
+TALARIA_DISPLAY_MODE=diagnostics
+EOF
+/etc/init.d/S70talaria-mode-resolve restart
+```
+
 `S70talaria-mode-resolve` also retries on its own every 15 seconds (`TALARIA_MODE_RESOLVE_INTERVAL`), so the `restart` above is only for forcing an immediate re-check — the override still takes effect within one interval either way. `S80talaria-browser` picks up the change on its own next poll (every 5s, `TALARIA_BROWSER_POLL_INTERVAL`); restart it directly only to force an immediate recheck:
 
 ```sh
@@ -61,7 +73,7 @@ EOF
 ## Pass Criteria
 
 - The machine boots unattended after BIOS setup.
-- The Talaria splash appears before diagnostics finish.
+- The Talaria PNG splash appears before diagnostics finish.
 - Network comes up without manual driver work.
 - The Talaria server can be pinged.
 - `/data/talaria/phase1.log` survives reboot.

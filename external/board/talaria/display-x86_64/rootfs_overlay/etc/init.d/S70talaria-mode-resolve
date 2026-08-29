@@ -6,11 +6,37 @@
 # docs/display-runtime-design.md.
 
 resolve_interval="${TALARIA_MODE_RESOLVE_INTERVAL:-15}"
+mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
 pidfile=/var/run/talaria-mode-resolve.pid
+
+normalize_sleep_seconds() {
+  candidate="$1"
+  case "$candidate" in
+    ''|*[!0-9]*) echo "$resolve_interval" ;;
+    *)
+      if [ "$candidate" -lt 5 ]; then
+        echo 5
+      elif [ "$candidate" -gt 3600 ]; then
+        echo 3600
+      else
+        echo "$candidate"
+      fi
+      ;;
+  esac
+}
 
 resolve_loop() {
   while true; do
-    sleep "$resolve_interval"
+    sleep_seconds="$resolve_interval"
+    if [ -f "$mode_state" ]; then
+      ASSIGNMENT_REFRESH_SECONDS=
+      . "$mode_state"
+      case "$ASSIGNMENT_REFRESH_SECONDS" in
+        ''|*[!0-9]*) ;;
+        *) sleep_seconds="$(normalize_sleep_seconds "$ASSIGNMENT_REFRESH_SECONDS")" ;;
+      esac
+    fi
+    sleep "$sleep_seconds"
     /usr/bin/talaria-resolve-mode
   done
 }

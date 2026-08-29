@@ -20,6 +20,7 @@
 CONFIG_FB=y
 CONFIG_FRAMEBUFFER_CONSOLE=y
 CONFIG_FB_VESA=y
+CONFIG_INPUT_EVDEV=y
 CONFIG_DRM=y
 CONFIG_DRM_FBDEV_EMULATION=y
 CONFIG_DRM_SIMPLEDRM=y
@@ -46,6 +47,21 @@ CONFIG_DRM_MGAG200=m
 CONFIG_DRM_AST=m
 
 # QEMU's emulated video adapters, so the QEMU smoke test can eventually
-# exercise the real DRM/Cog path instead of only the console splash.
+# exercise the real DRM/Cog path instead of only the local splash.
 CONFIG_DRM_BOCHS=y
 CONFIG_DRM_CIRRUS_QEMU=y
+CONFIG_DRM_QXL=y
+
+# VirtIO GPU is what UTM/Apple virtualization commonly exposes for x86_64
+# Linux guests. Without this, the console can still limp along on firmware
+# framebuffer/simpledrm, but Cog's DRM backend has no real KMS driver and
+# logs `virtio_gpu: driver missing` / page-flip failures.
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_INPUT=y
+CONFIG_VIRTIO_MMIO=y
+CONFIG_VIRTIO_MMIO_CMDLINE_DEVICES=y
+CONFIG_DRM_VIRTIO_GPU=y
+
+# VMware/VirtualBox-style virtual graphics coverage. This is mainly for
+# development and CI-style VM bring-up, not the physical appliance fleet.
+CONFIG_DRM_VMWGFX=y

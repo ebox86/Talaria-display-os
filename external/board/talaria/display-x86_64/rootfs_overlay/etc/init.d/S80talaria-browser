@@ -4,18 +4,80 @@
 # S70talaria-mode-resolve keeps refreshed and launches/restarts/stops the
 # kiosk browser to match. See docs/display-runtime-design.md#browser-phase.
 
-pidfile=/var/run/talaria-browser-supervise.pid
+pidfile="${TALARIA_BROWSER_SUPERVISOR_PIDFILE:-/var/run/talaria-browser-supervise.pid}"
+browser_pidfile="${TALARIA_BROWSER_PIDFILE:-/run/talaria/browser.pid}"
+run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
+lock_dir="$run_dir/browser-supervise.lock"
+lock_pidfile="$lock_dir/pid"
+browser_name="${TALARIA_BROWSER_CMD##*/}"
+browser_name="${browser_name:-cog}"
+cage_name="${TALARIA_CAGE_CMD##*/}"
+cage_name="${cage_name:-cage}"
+supervisor_cmd="${TALARIA_BROWSER_SUPERVISOR_CMD:-/usr/bin/talaria-browser-supervise}"
+
+pidfile_is_running() {
+  target_pidfile="$1"
+
+  [ -f "$target_pidfile" ] || return 1
+  target_pid="$(cat "$target_pidfile" 2>/dev/null || true)"
+  [ -n "$target_pid" ] || return 1
+  kill -0 "$target_pid" 2>/dev/null
+}
+
+clear_supervisor_lock() {
+  rm -f "$lock_pidfile"
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+
+kill_pidfile() {
+  target_pidfile="$1"
+
+  [ -f "$target_pidfile" ] || return 0
+  target_pid="$(cat "$target_pidfile" 2>/dev/null || true)"
+  if [ -n "$target_pid" ]; then
+    kill "$target_pid" 2>/dev/null || true
+    sleep 1
+    kill -0 "$target_pid" 2>/dev/null && kill -9 "$target_pid" 2>/dev/null || true
+  fi
+  rm -f "$target_pidfile"
+}
+
+kill_browser_processes() {
+  command -v pidof >/dev/null 2>&1 || return 0
+
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    kill -9 "$pid" 2>/dev/null || true
+  done
+}
 
 case "$1" in
   start)
-    /usr/bin/talaria-browser-supervise &
+    if pidfile_is_running "$pidfile"; then
+      exit 0
+    fi
+    rm -f "$pidfile"
+
+    if pidfile_is_running "$lock_pidfile"; then
+      cat "$lock_pidfile" > "$pidfile" 2>/dev/null || true
+      exit 0
+    fi
+
+    clear_supervisor_lock
+    kill_pidfile "$browser_pidfile"
+    kill_browser_processes
+    "$supervisor_cmd" &
     echo $! > "$pidfile"
     ;;
   stop)
-    if [ -f "$pidfile" ]; then
-      kill "$(cat "$pidfile")" 2>/dev/null || true
-      rm -f "$pidfile"
-    fi
+    kill_pidfile "$pidfile"
+    kill_pidfile "$browser_pidfile"
+    kill_browser_processes
+    rm -f "$run_dir/browser.exited"
+    clear_supervisor_lock
     ;;
   restart|reload)
     "$0" stop

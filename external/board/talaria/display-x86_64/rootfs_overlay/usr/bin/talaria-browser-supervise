@@ -6,10 +6,9 @@
 # restarts, or stops the browser to match it. See
 # docs/display-runtime-design.md#browser-phase.
 #
-# The browser command itself is a plain WPE/Cog invocation against the
-# DRM backend (no X11/Wayland compositor) rendering with Mesa's software
-# GL (llvmpipe) by default, since target hardware GPUs are not yet known
-# — see the Buildroot defconfig comments for that tradeoff.
+# The preferred browser path is Cage as a single-app Wayland compositor
+# running Cog's Wayland platform. Direct Cog DRM remains available as a
+# fallback/debug backend.
 #
 # Crash detection deliberately does not use `kill -0` on the browser's
 # pid: a child that has exited but not yet been reaped is a zombie, and
@@ -28,16 +27,22 @@
 # Environment overrides, mainly for scripts/test-browser-supervise.sh:
 #
 #   TALARIA_MODE_STATE            default /run/talaria/mode-state.conf
+#   TALARIA_BROWSER_BACKEND       default auto (cage when available, else drm)
 #   TALARIA_BROWSER_CMD           default cog
-#   TALARIA_COG_PLATFORM          default drm
+#   TALARIA_CAGE_CMD              default cage
+#   TALARIA_CAGE_ARGS             default -s
+#   TALARIA_COG_PLATFORM          default drm (direct DRM fallback only)
+#   TALARIA_COG_PLATFORM_PARAMS   default empty (direct DRM fallback only)
+#   TALARIA_COG_WL_PLATFORM       default wl
 #   TALARIA_BROWSER_POLL_INTERVAL default 5 (seconds)
 #   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
 #   TALARIA_BROWSER_MAX_CRASHES   default 3 (consecutive crashes before giving-up signal)
-#   TALARIA_BROWSER_STABLE_CYCLES default 3 (consecutive healthy cycles before the crash count resets)
+#   TALARIA_BROWSER_STABLE_CYCLES default 12 (consecutive healthy cycles before the crash count resets)
 #   TALARIA_BROWSER_BACKOFF_BASE  default 5 (seconds; delay before the 1st relaunch attempt after a crash)
 #   TALARIA_BROWSER_BACKOFF_MAX   default 60 (seconds; backoff cap)
 #   TALARIA_BROWSER_RUN_DIR       default /run/talaria
 #   TALARIA_CONSOLE_DEVICE        default /dev/console
+#   TALARIA_XCOMPOSEFILE          default /usr/share/talaria/empty-compose
 #
 # Backoff only delays *relaunching the same crashing target* - it never
 # delays noticing a mode/target change. A config fix or a server
@@ -45,19 +50,28 @@
 # previous target is deep in backoff.
 
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
+browser_backend="${TALARIA_BROWSER_BACKEND:-auto}"
 browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
+cage_cmd="${TALARIA_CAGE_CMD:-cage}"
+cage_args="${TALARIA_CAGE_ARGS--s}"
 browser_platform="${TALARIA_COG_PLATFORM:-drm}"
+browser_platform_params="${TALARIA_COG_PLATFORM_PARAMS-}"
+cog_wl_platform="${TALARIA_COG_WL_PLATFORM:-wl}"
 poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
 max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
 max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"
-stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-3}"
+stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-12}"
 backoff_base="${TALARIA_BROWSER_BACKOFF_BASE:-5}"
 backoff_max="${TALARIA_BROWSER_BACKOFF_MAX:-60}"
 run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
+xcompose_file="${TALARIA_XCOMPOSEFILE:-/usr/share/talaria/empty-compose}"
+xdg_runtime_dir="$run_dir/xdg-runtime"
 
 browser_pid_file="$run_dir/browser.pid"
 exit_marker="$run_dir/browser.exited"
+lock_dir="$run_dir/browser-supervise.lock"
+lock_pid_file="$lock_dir/pid"
 
 mkdir -p "$run_dir" 2>/dev/null
 
@@ -67,10 +81,57 @@ console_status() {
   fi
 }
 
+release_supervisor_lock() {
+  rm -f "$lock_pid_file"
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+
+claim_supervisor_lock() {
+  local lock_pid
+
+  if mkdir "$lock_dir" 2>/dev/null; then
+    echo "$$" > "$lock_pid_file"
+    return 0
+  fi
+
+  lock_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+  if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+    console_status "TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING pid=$lock_pid"
+    return 1
+  fi
+
+  rm -f "$lock_pid_file"
+  rmdir "$lock_dir" 2>/dev/null || true
+  if mkdir "$lock_dir" 2>/dev/null; then
+    echo "$$" > "$lock_pid_file"
+    return 0
+  fi
+
+  console_status "TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING pid=unknown"
+  return 1
+}
+
 run_splash() {
   if command -v talaria-splash >/dev/null 2>&1; then
     talaria-splash "$1" "$2" || true
   fi
+}
+
+use_cage_backend() {
+  case "$browser_backend" in
+    cage|wl|wayland)
+      command -v "$cage_cmd" >/dev/null 2>&1
+      ;;
+    drm)
+      return 1
+      ;;
+    auto)
+      command -v "$cage_cmd" >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 current_pid=""
@@ -89,11 +150,33 @@ stop_browser() {
   rm -f "$browser_pid_file" "$exit_marker"
 }
 
+stop_supervisor() {
+  stop_browser
+  release_supervisor_lock
+  exit 0
+}
+
+claim_supervisor_lock || exit 0
+trap stop_supervisor INT TERM
+trap release_supervisor_lock EXIT
+
 start_browser() {
   target="$1"
   rm -f "$browser_pid_file" "$exit_marker"
   (
-    "$browser_cmd" --platform="$browser_platform" "$target" &
+    if use_cage_backend; then
+      mkdir -p "$xdg_runtime_dir" 2>/dev/null
+      chmod 700 "$xdg_runtime_dir" 2>/dev/null || true
+      if [ -n "$cage_args" ]; then
+        XDG_RUNTIME_DIR="$xdg_runtime_dir" XCOMPOSEFILE="$xcompose_file" COG_PLATFORM_WL_VIEW_FULLSCREEN=1 "$cage_cmd" $cage_args -- "$browser_cmd" --platform="$cog_wl_platform" "$target" &
+      else
+        XDG_RUNTIME_DIR="$xdg_runtime_dir" XCOMPOSEFILE="$xcompose_file" COG_PLATFORM_WL_VIEW_FULLSCREEN=1 "$cage_cmd" -- "$browser_cmd" --platform="$cog_wl_platform" "$target" &
+      fi
+    elif [ -n "$browser_platform_params" ]; then
+      XCOMPOSEFILE="$xcompose_file" "$browser_cmd" --platform="$browser_platform" --platform-params="$browser_platform_params" "$target" &
+    else
+      XCOMPOSEFILE="$xcompose_file" "$browser_cmd" --platform="$browser_platform" "$target" &
+    fi
     child=$!
     echo "$child" > "$browser_pid_file"
     wait "$child" 2>/dev/null

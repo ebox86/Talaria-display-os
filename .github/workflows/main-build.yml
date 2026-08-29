@@ -38,6 +38,9 @@ jobs:
       - name: Test browser-supervise logic
         run: ./scripts/test-browser-supervise.sh
 
+      - name: Test browser init lifecycle
+        run: ./scripts/test-browser-init.sh
+
       - name: Read Buildroot version
         id: buildroot
         shell: bash
@@ -107,7 +110,7 @@ jobs:
             artifacts/qemu-screenshot.png
           compression-level: 0
           retention-days: 30
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Add QEMU screenshot to job summary
         if: always()

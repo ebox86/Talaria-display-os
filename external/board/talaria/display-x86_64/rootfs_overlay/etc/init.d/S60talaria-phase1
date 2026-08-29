@@ -22,7 +22,7 @@ case "$1" in
       . /data/talaria/display.conf
     fi
 
-    TALARIA_DISPLAY_MODE="${TALARIA_DISPLAY_MODE:-dashboard}"
+    TALARIA_DISPLAY_MODE="${TALARIA_DISPLAY_MODE:-diagnostics}"
     TALARIA_DISPLAY_URL="${TALARIA_DISPLAY_URL:-unset}"
 
     log=/data/talaria/phase1.log

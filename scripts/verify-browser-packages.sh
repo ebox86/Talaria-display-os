@@ -26,6 +26,8 @@ required_symbols=(
   BR2_PACKAGE_MESA3D_OPENGL_ES
   BR2_PACKAGE_MESA3D_GBM
   BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SVGA
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL
   # These two are what wpewebkit's Config.in actually `depends on` -
   # checking them directly, not just the Mesa options that are supposed
   # to provide them, is what would have caught the MESA3D_OPENGL_ES2-
@@ -35,8 +37,28 @@ required_symbols=(
   BR2_PACKAGE_HAS_LIBEGL
   BR2_PACKAGE_HAS_LIBGLES
   BR2_PACKAGE_WPEWEBKIT
+  BR2_PACKAGE_CAIRO
+  BR2_PACKAGE_CAIRO_PNG
+  BR2_PACKAGE_CAGE
+  BR2_PACKAGE_WLROOTS
   BR2_PACKAGE_COG
+  BR2_PACKAGE_COG_PLATFORM_FDO
   BR2_PACKAGE_COG_PLATFORM_DRM
+  # Local framebuffer splash renderer for the baked PNG shown before
+  # Cog starts and for diagnostics/fallback states.
+  BR2_PACKAGE_FBV
+  BR2_PACKAGE_FBV_PNG
+  # Runtime assets for the browser, not just link-time libraries. These
+  # caught the first real boot where Cog could launch and load a page,
+  # but the image had no installed fonts and no /usr/share/X11/xkb data
+  # for libxkbcommon.
+  BR2_PACKAGE_FONTCONFIG
+  BR2_PACKAGE_FREETYPE
+  BR2_PACKAGE_DEJAVU
+  BR2_PACKAGE_DEJAVU_SANS
+  BR2_PACKAGE_LIBERATION
+  BR2_PACKAGE_LIBERATION_SANS
+  BR2_PACKAGE_XKEYBOARD_CONFIG
 )
 
 missing=()
@@ -70,23 +92,6 @@ if grep -qx 'BR2_LEGACY=y' "$config_file"; then
   echo "cross-referencing against Buildroot's own Config.in.legacy, e.g.:" >&2
   echo "  grep -oE '^BR2_[A-Z0-9_]+' external/configs/talaria_display_x86_64_defconfig |" >&2
   echo "    xargs -I{} grep -l '^config {}\$' \$BUILDROOT_DIR/Config.in.legacy" >&2
-  exit 1
-fi
-
-# Cog's Wayland platform (COG_PLATFORM_FDO) defaults to 'y' in Cog's own
-# Config.in and was never meant to be built here - only --platform=drm is
-# ever launched at runtime (see talaria-browser-supervise) - but it pulls
-# in cairo, which nothing else in this defconfig provides, so it fails
-# ~3+ hours in, after WPEWebKit itself has already built from source
-# (iteration 4). Check for it explicitly so a future re-enable (e.g. an
-# unrelated defconfig edit that resets it to its Kconfig default) fails
-# in seconds instead of silently reintroducing that multi-hour loss.
-if grep -qx 'BR2_PACKAGE_COG_PLATFORM_FDO=y' "$config_file"; then
-  echo "$config_file has BR2_PACKAGE_COG_PLATFORM_FDO=y." >&2
-  echo "This platform is unused at runtime (only --platform=drm is ever launched)" >&2
-  echo "and fails on a missing cairo dependency after WPEWebKit has already built" >&2
-  echo "from source (~3+ hours). Set '# BR2_PACKAGE_COG_PLATFORM_FDO is not set' in" >&2
-  echo "external/configs/talaria_display_x86_64_defconfig instead." >&2
   exit 1
 fi
 

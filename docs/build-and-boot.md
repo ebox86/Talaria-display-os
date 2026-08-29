@@ -13,7 +13,7 @@ output/images/disk.img
 The image should:
 
 - boot with GRUB BIOS
-- show a Talaria console splash on `tty1`
+- show the Talaria PNG splash on the primary framebuffer, with console text fallback
 - mount root from partition 1
 - mount persistent `/data` from partition 2 labeled `TALARIA_DATA`
 - acquire wired DHCP
@@ -31,7 +31,7 @@ On apt-based Linux hosts, install `libelf-dev` before building. The x86_64 Linux
 
 CI installs the common Buildroot host tools explicitly, including `diffutils`, `findutils`, `gawk`, `sed`, `curl`, and `wget`, plus a best-effort set of extras for the WPEWebKit/Cog/Mesa build (`cmake`, `ninja-build`, `bison`, `flex`, `gperf`, `ruby`, and others — see `scripts/ci-install-deps.sh`). Buildroot builds most of its own host tooling from source, so this list may still be missing something the first time it actually runs; a build failing on a missing host command is a one-line fix to that script.
 
-The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `1536M` to leave room for WPEWebKit/Mesa/ICU, up from `256M` for the Phase 1 console-only image.
+The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `1536M` to leave room for WPEWebKit/Mesa/ICU, up from `256M` for the original Phase 1 text-only image.
 
 ## Kernel Pin
 
@@ -102,7 +102,7 @@ Every `Main Build` run that passes the QEMU smoke test replaces a single rolling
 
 It's one release that gets replaced each time, not a new tag per build — a fresh release per commit gets noisy fast and isn't the point; the point is "give me something to boot right now." For a specific past build within the last 30 days, use that run's `talaria-display-os-main-<run-number>` workflow artifact instead (includes `qemu-smoke.log`).
 
-`dev-latest` is marked prerelease and is an automatic dev snapshot, not a curated versioned release — the release existing means the image booted in QEMU, not that the browser stack built successfully. Check that specific run's build log before assuming more than "it boots to whatever mode it resolved, including possibly `diagnostics` if WPE/Cog didn't build." A build that fails the smoke test does not touch the release; the 30-day artifact is still uploaded for those to debug from.
+`dev-latest` is marked prerelease and is an automatic dev snapshot, not a curated versioned release. The release existing means the image built, booted in QEMU, and emitted the smoke-test markers; physical hardware and real Talaria dashboard/signage rendering still need separate validation. A build that fails the smoke test does not touch the release; the 30-day artifact is still uploaded for those to debug from.
 
 The automatic PR and main workflows are path-filtered to Buildroot inputs, board files, scripts, and workflow files. Use the workflow's manual `workflow_dispatch` button when a docs-only or planning-only change still needs a full image build.
 
@@ -161,9 +161,9 @@ To check the mode-resolution and browser-supervision logic itself (validation, f
 ./scripts/test-browser-supervise.sh
 ```
 
-The first runs `usr/bin/talaria-resolve-mode` directly against temp config files for each mode/fallback case; the second runs `usr/bin/talaria-browser-supervise` against a fake browser stub. Neither validates init sequencing, actual boot behavior, or the real WPE/Cog binary — that still needs the QEMU smoke test above and, eventually, real hardware.
+The first runs `usr/bin/talaria-resolve-mode` directly against temp config files for each mode/fallback case; the second runs `usr/bin/talaria-browser-supervise` against fake browser/Cage stubs. Neither validates init sequencing, actual boot behavior, or the real WPE/Cog/Cage binaries — that still needs the QEMU smoke test above and, eventually, real hardware.
 
-Before a full image build, `scripts/build.sh` also runs `scripts/verify-browser-packages.sh`, which checks that the WPE/Cog/Mesa Kconfig symbols in the defconfig actually resolved to `y` in the generated `.config`. Those symbol names are best-effort (not verified against a real Buildroot 2026.05.1 checkout) — this check exists so a wrong or renamed one fails in seconds, before the multi-hour WPEWebKit build, rather than after.
+Before a full image build, `scripts/build.sh` also runs `scripts/verify-browser-packages.sh`, which checks that the WPE/Cog/Cage/Mesa Kconfig symbols in the defconfig actually resolved to `y` in the generated `.config`. This check exists so a wrong or renamed one fails in seconds, before the multi-hour WPEWebKit build, rather than after.
 
 ## Hardware Flash
 
@@ -184,7 +184,7 @@ The script asks for `YES` before writing.
 ## First Hardware Pass Criteria
 
 - BIOS boots USB without manual intervention after boot order is set.
-- Talaria splash appears on the primary console.
+- Talaria PNG splash appears on the primary display.
 - Wired DHCP comes up.
 - `/data/talaria/phase1.log` exists.
 - `/data/talaria/phase1.log` persists after reboot.
@@ -195,4 +195,4 @@ The script asks for `YES` before writing.
 - This pass is BIOS-first, not UEFI.
 - Root is currently configured as `/dev/sda1`.
 - Persistent data is currently expected at `/dev/sda2`, with fallback probes for older/QEMU names.
-- The WPE/Cog browser stack has not yet completed a real Buildroot build. Mode resolution and browser supervision are implemented and unit-tested, but the actual `BR2_PACKAGE_WPEWEBKIT`/`COG`/`MESA3D` Kconfig wiring is best-effort and unverified until it runs on a real Buildroot checkout — see [`display-runtime-design.md`](display-runtime-design.md#browser-phase).
+- The direct WPE/Cog DRM browser stack has completed real Buildroot builds and rendered a local browser test page in a VM. The newer Cage + Cog Wayland runtime path still needs the next CI build and VM boot before we can treat it as proven — see [`display-runtime-design.md`](display-runtime-design.md#browser-phase).

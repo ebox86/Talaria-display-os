@@ -8,6 +8,29 @@ output_dir="${OUTPUT_DIR:-$repo_root/output}"
 dl_dir="${BR2_DL_DIR:-$repo_root/dl}"
 defconfig="${DEFCONFIG:-talaria_display_x86_64_defconfig}"
 
+repair_grub2_image_cache() {
+  local config_file="$output_dir/.config"
+  local -a image_stamps=()
+
+  [[ -f "$config_file" ]] || return 0
+  grep -qx 'BR2_TARGET_GRUB2_I386_PC=y' "$config_file" || return 0
+  [[ ! -f "$output_dir/images/grub.img" ]] || return 0
+
+  # CI restores output/build but not output/images. If a previous cache
+  # contains grub2's image-install stamp, Buildroot can believe grub.img
+  # already exists even though genimage will later fail looking for it.
+  # Remove only that stamp so the normal grub2 install-images step
+  # recreates output/images/grub.img during the full build.
+  shopt -s nullglob
+  image_stamps=("$output_dir"/build/grub2-*/.stamp_images_installed)
+  shopt -u nullglob
+
+  if ((${#image_stamps[@]} > 0)); then
+    rm -f "${image_stamps[@]}"
+    echo "Invalidated cached GRUB2 image-install stamp; output/images/grub.img will be regenerated."
+  fi
+}
+
 if [[ ! -d "$buildroot_dir" ]]; then
   echo "Buildroot was not found at $buildroot_dir" >&2
   echo "Run ./scripts/bootstrap-buildroot.sh or set BUILDROOT_DIR." >&2
@@ -36,6 +59,8 @@ if grep -q '^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=' "$repo_root/external/confi
   make -C "$buildroot_dir" O="$output_dir" BR2_EXTERNAL="$repo_root/external" linux-configure
   "$repo_root/scripts/verify-kernel-video-config.sh"
 fi
+
+repair_grub2_image_cache
 
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"

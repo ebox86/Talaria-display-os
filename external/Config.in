@@ -4,9 +4,8 @@ config BR2_PACKAGE_TALARIA_DISPLAY_OS_NOTES
 	bool "Talaria display OS project notes"
 	help
 	  This external tree currently provides board files, rootfs overlays,
-	  and scripts for the Talaria Display OS proof of concept. The first
-	  milestone is a minimal text/network image. WPE WebKit/Cog kiosk
-	  browser support for dashboard and signage modes will be added after
-	  hardware bring-up is proven.
+	  and scripts for the Talaria Display OS proof of concept. The image
+	  boots to local diagnostics by default and can supervise a kiosk
+	  browser for dashboard and signage modes once assigned.
 
 endmenu
