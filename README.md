@@ -12,7 +12,9 @@ Phase 1 is a text/network bring-up image:
 old PC boots USB/rootfs -> console splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-WPE WebKit/Cog is the intended kiosk browser stack for dashboard and signage modes, but browser work should start only after a minimal image boots and networks reliably on the oldest target PCs.
+Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falls back to `diagnostics` on any invalid or unreachable config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
+
+The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). The WPE/Cog/Mesa Buildroot package wiring has now been validated by a real from-source CI build (PR #4, run 4): the defconfig resolves cleanly, WPEWebKit/Cog/Mesa compile, and the resulting image boots in QEMU and correctly falls back to the diagnostics screen when no Talaria server is reachable. `scripts/verify-browser-packages.sh` still catches an obviously wrong or renamed symbol fast, before paying the multi-hour build cost again. What's still unproven is real hardware: no image has been flashed to or booted on an actual target machine yet, and the `dashboard`/`signage` browser path itself (WPE WebKit actually rendering the Talaria dashboard) has only been exercised against the diagnostics fallback, not a real server. See `docs/hardware-inventory.md`.
 
 ## Repo Layout
 
@@ -27,6 +29,10 @@ scripts/
   qemu-smoke-test.sh
   run-qemu.sh
   save-defconfig.sh
+  test-mode-resolve.sh
+  test-browser-supervise.sh
+  verify-browser-packages.sh
+  verify-kernel-video-config.sh
 external/
   external.desc
   Config.in
@@ -38,6 +44,7 @@ external/
       display-x86_64/
         genimage-bios.cfg
         grub-bios.cfg
+        linux-video.fragment
         rootfs_overlay/
         post-build.sh
         post-image.sh
@@ -45,6 +52,7 @@ docs/
   build-and-boot.md
   first-boot-test.md
   hardware-inventory.md
+  display-runtime-design.md
 ```
 
 ## Prerequisites
@@ -112,7 +120,7 @@ Package the boot image, manifest, checksums, and test notes with:
 ./scripts/package-artifacts.sh
 ```
 
-GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run.
+GitHub Actions also builds this image on pull requests and on pushes to `main`, then uploads the packaged artifact from the workflow run. Main builds that pass the QEMU smoke test also update a rolling `dev-latest` GitHub Release (prerelease) with the current image — see [`docs/build-and-boot.md`](docs/build-and-boot.md#github-releases).
 
 The automatic full-image workflows are path-filtered to OS build inputs:
 
@@ -155,7 +163,7 @@ For CI-style validation without a graphical window:
 ./scripts/qemu-smoke-test.sh
 ```
 
-The smoke test boots `output/images/disk.img`, captures serial output to `artifacts/qemu-smoke.log`, and passes when the Phase 1 ready marker appears.
+The smoke test boots `output/images/disk.img`, captures serial output to `artifacts/qemu-smoke.log`, and passes when the Phase 1 ready marker and a mode-resolution marker both appear.
 
 CI caches Buildroot downloads plus the generated host toolchain directories under `output/host` and selected host build stamps. This is intentionally narrower than caching the whole `output/` tree so target images still rebuild from the current external tree.
 
@@ -177,7 +185,7 @@ Success for the first real milestone:
 Old PC boots -> shows splash -> gets DHCP -> pings Talaria server -> writes /data/talaria/phase1.log
 ```
 
-Do not start browser tuning until this is true on at least one old target workstation.
+Browser-stack code (mode resolution, supervision) exists ahead of this milestone, but do not start tuning it against real content/hardware until Phase 1 boot is proven true on at least one old target workstation.
 
 ## Useful References
 

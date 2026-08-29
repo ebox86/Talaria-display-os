@@ -20,6 +20,23 @@ export BR2_DL_DIR="$dl_dir"
 echo "Configuring $defconfig"
 make -C "$buildroot_dir" O="$output_dir" BR2_EXTERNAL="$repo_root/external" "$defconfig"
 
+# The browser-stack Kconfig symbols are best-effort (see the comment
+# block in the defconfig); catch a misspelled/renamed one in seconds,
+# before the multi-hour build below, rather than after.
+if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  "$repo_root/scripts/verify-browser-packages.sh"
+fi
+
+# Same reasoning, one layer down: the video-coverage kernel config
+# fragment's symbols are also best-effort. `linux-configure` runs just
+# the kernel package's own configure step (source fetch + Kconfig
+# merge), which is minutes, not the multi-hour full build.
+if grep -q '^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  echo "Configuring Linux kernel (verifying video fragment)"
+  make -C "$buildroot_dir" O="$output_dir" BR2_EXTERNAL="$repo_root/external" linux-configure
+  "$repo_root/scripts/verify-kernel-video-config.sh"
+fi
+
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"
 
