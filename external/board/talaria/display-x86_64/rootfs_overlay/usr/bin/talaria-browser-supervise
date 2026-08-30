@@ -105,6 +105,13 @@ console_status() {
   fi
 }
 
+target_label() {
+  case "$1" in
+    data:text/html*) echo "local-pairing" ;;
+    *) echo "$1" ;;
+  esac
+}
+
 release_supervisor_lock() {
   rm -f "$lock_pid_file"
   rmdir "$lock_dir" 2>/dev/null || true
@@ -267,7 +274,7 @@ start_browser() {
   ) &
   current_pid=$!
   current_target="$target"
-  console_status "TALARIA_BROWSER_LAUNCH url=$target pid=$current_pid"
+  console_status "TALARIA_BROWSER_LAUNCH url=$(target_label "$target") pid=$current_pid"
 }
 
 cycle=0
@@ -282,13 +289,13 @@ while true; do
   [ -f "$mode_state" ] && . "$mode_state"
 
   case "$EFFECTIVE_MODE" in
-    dashboard|signage) desired_target="$DISPLAY_URL" ;;
+    dashboard|signage|pairing) desired_target="$DISPLAY_URL" ;;
     *) desired_target="" ;;
   esac
 
   crashed_this_cycle=0
   if [ -n "$current_pid" ] && [ -f "$exit_marker" ]; then
-    console_status "TALARIA_BROWSER_CRASHED target=$current_target"
+    console_status "TALARIA_BROWSER_CRASHED target=$(target_label "$current_target")"
     cleanup_browser_runtime
     current_pid=""
     crashed_this_cycle=1
@@ -350,8 +357,8 @@ while true; do
     if [ "$giveup_retry_delay" -gt 0 ] 2>/dev/null; then
       backoff_until=$((now + giveup_retry_delay))
     fi
-    console_status "TALARIA_BROWSER_GIVING_UP target=$current_target attempts=$crash_count retry_seconds=$giveup_retry_delay"
-    run_splash diagnostics "Browser unavailable after $crash_count attempts: $current_target"
+    console_status "TALARIA_BROWSER_GIVING_UP target=$(target_label "$current_target") attempts=$crash_count retry_seconds=$giveup_retry_delay"
+    run_splash diagnostics "Browser unavailable after $crash_count attempts: $(target_label "$current_target")"
   fi
 
   cycle=$((cycle + 1))

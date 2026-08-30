@@ -8,6 +8,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 resolver="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/bin/talaria-resolve-mode"
+pairing_url="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/bin/talaria-pairing-url"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -41,6 +42,8 @@ run_case() {
     TALARIA_DATA_CONF="$data_conf" \
     TALARIA_STATE_LOG="$state_log" \
     TALARIA_MODE_STATE="$mode_state" \
+    TALARIA_PAIRING_URL_CMD="$pairing_url" \
+    TALARIA_PAIRING_CODE_FILE="$work_dir/$name.pairing-code" \
     TALARIA_FETCH_CMD="$fetch_cmd" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   else
@@ -48,6 +51,8 @@ run_case() {
     TALARIA_DATA_CONF="$data_conf" \
     TALARIA_STATE_LOG="$state_log" \
     TALARIA_MODE_STATE="$mode_state" \
+    TALARIA_PAIRING_URL_CMD="$pairing_url" \
+    TALARIA_PAIRING_CODE_FILE="$work_dir/$name.pairing-code" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   fi
 
@@ -71,6 +76,8 @@ run_case() {
   [[ "${EFFECTIVE_MODE:-}" == "$expect_mode" ]] || ok=0
   if [[ "$expect_mode" == "diagnostics" || "$expect_fallback" == "yes" ]]; then
     [[ -z "${DISPLAY_URL:-}" ]] || ok=0
+  elif [[ "$expect_mode" == "pairing" ]]; then
+    [[ "${DISPLAY_URL:-}" == data:text/html* ]] || ok=0
   else
     [[ "${DISPLAY_URL:-}" == http* ]] || ok=0
   fi
@@ -110,14 +117,14 @@ run_case "explicit-diagnostics-no-url-needed" \
   "false" \
   "diagnostics" "no"
 
-run_case "baked-default-diagnostics-no-url-needed" \
+run_case "baked-default-pairing-no-url-needed" \
   "TALARIA_SERVER_HOST=talaria.local
-TALARIA_DISPLAY_MODE=diagnostics
+TALARIA_DISPLAY_MODE=pairing
 TALARIA_DISPLAY_URL=
 TALARIA_DEVICE_ID=unconfigured" \
   "" \
   "false" \
-  "diagnostics" "no"
+  "pairing" "no"
 
 run_case "invalid-mode-value" \
   "" \
@@ -180,6 +187,25 @@ TALARIA_DISPLAY_MODE=diagnostics" \
   "true" \
   "signage" "no" \
   "$assignment_fetch"
+
+assignment_fetch_pairing="$work_dir/fetch-assignment-pairing"
+cat > "$assignment_fetch_pairing" <<'EOF'
+#!/bin/sh
+printf '%s\n' \
+  'TALARIA_DISPLAY_MODE="pairing"' \
+  'TALARIA_ASSIGNMENT_REFRESH_SECONDS="10"'
+EOF
+chmod +x "$assignment_fetch_pairing"
+
+run_case "server-assignment-can-return-pairing" \
+  "" \
+  "TALARIA_SERVER_BASE_URL=http://talaria.local:17444
+TALARIA_DEVICE_ID=dev_test
+TALARIA_DEVICE_TOKEN=1234
+TALARIA_DISPLAY_MODE=diagnostics" \
+  "true" \
+  "pairing" "no" \
+  "$assignment_fetch_pairing"
 
 unsafe_fetch_marker="$work_dir/unsafe-fetch-was-called"
 unsafe_assignment_fetch="$work_dir/unsafe-fetch-assignment"

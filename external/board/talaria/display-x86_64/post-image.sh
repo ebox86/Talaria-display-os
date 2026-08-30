@@ -23,8 +23,8 @@ Expected current milestone:
 - acquire wired DHCP
 - render Talaria PNG diagnostics splash
 - write diagnostics logs under /data/talaria
-- resolve dashboard/signage/diagnostics mode from local config or server assignment
-- supervise WPE/Cog browser for dashboard/signage targets
+- resolve dashboard/signage/pairing/diagnostics mode from local config or server assignment
+- supervise WPE/Cog browser for dashboard/signage/pairing targets
 
 Primary output:
 - disk.img

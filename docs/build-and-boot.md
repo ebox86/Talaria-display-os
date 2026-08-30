@@ -1,6 +1,6 @@
 # Build And Boot
 
-This is the build path for a BIOS-bootable Talaria Display OS disk image, covering Phase 1 bring-up plus Phase 3 mode resolution and browser supervision.
+This is the build path for a BIOS-bootable Talaria Display OS disk image, covering Phase 1 bring-up plus Phase 3 mode resolution, local pairing, and browser supervision.
 
 ## Goal
 
@@ -18,7 +18,8 @@ The image should:
 - mount persistent `/data` from partition 2 labeled `TALARIA_DATA`
 - acquire wired DHCP
 - write diagnostic logs under `/data/talaria`
-- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on invalid config
+- resolve an effective display mode (`dashboard`/`signage`/`pairing`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on invalid config
+- show a local browser-rendered pairing screen on a fresh unassigned image when the browser stack is healthy
 - supervise a WPE/Cog kiosk browser against the resolved mode, relaunching on crash or on a URL change, stopping it entirely in `diagnostics`
 
 See [`display-runtime-design.md`](display-runtime-design.md) for the full mode/fallback/browser-supervision design.

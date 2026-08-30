@@ -58,8 +58,8 @@ chmod +x "$work_dir/fake-cage"
 write_state() {
   local mode="$1" url="$2"
   {
-    echo "EFFECTIVE_MODE=$mode"
-    echo "DISPLAY_URL=$url"
+    printf 'EFFECTIVE_MODE="%s"\n' "$mode"
+    printf 'DISPLAY_URL="%s"\n' "$url"
     echo "FALLBACK_REASON="
   } > "$work_dir/mode-state.conf"
 }
@@ -128,7 +128,7 @@ write_state "dashboard" "http://talaria.local/dashboard/"
 start_supervisor
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard/' || ok=0
-grep -q 'args: --platform=drm http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
+wait_for "$work_dir/fake-browser.log" 'args: --platform=drm http://talaria.local/dashboard/' || ok=0
 check "launches on valid dashboard state" "$ok"
 
 # --- Scenario 1b: auto backend launches through Cage/Cog Wayland when available ---
@@ -151,8 +151,8 @@ FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
 supervise_pid=$!
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard/' || ok=0
-grep -q 'cage args: -s --' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
-grep -q 'args: --platform=wl http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
+wait_for "$work_dir/fake-browser.log" 'cage args: -s --' || ok=0
+wait_for "$work_dir/fake-browser.log" 'args: --platform=wl http://talaria.local/dashboard/' || ok=0
 check "auto backend launches through Cage and Cog Wayland" "$ok"
 
 # --- Scenario 1c: a duplicate supervisor exits instead of launching a
@@ -189,6 +189,16 @@ write_state "dashboard" "http://talaria.local/dashboard-v2/"
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard-v2/' || ok=0
 check "restarts browser when the target URL changes" "$ok"
+
+stop_supervisor
+
+# --- Scenario 3b: pairing mode launches the local pairing data URL ---
+write_state "pairing" "data:text/html;base64,PGh0bWw+PC9odG1sPgo="
+start_supervisor
+ok=1
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=local-pairing' || ok=0
+wait_for "$work_dir/fake-browser.log" 'args: --platform=drm data:text/html;base64,PGh0bWw+PC9odG1sPgo=' || ok=0
+check "launches local pairing page in pairing mode" "$ok"
 
 stop_supervisor
 

@@ -4,9 +4,13 @@ This image is for hardware bring-up only:
 - wired DHCP
 - persistent /data/talaria/phase1.log
 - PNG splash on the primary framebuffer
-- no browser yet
+- local browser pairing page when the browser stack is healthy
+- dashboard/signage direct URL overrides for test rigs
 
 Inspect:
 - /data/talaria/data-mount.log
 - /data/talaria/network-wait.log
 - /data/talaria/phase1.log
+- /data/talaria/display-mode.log
+- /data/talaria/browser.log
+- /data/talaria/hardware-report.log

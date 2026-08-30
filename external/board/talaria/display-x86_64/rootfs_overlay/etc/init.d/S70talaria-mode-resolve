@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Resolve the effective display mode (dashboard/signage/diagnostics) and
+# Resolve the effective display mode (dashboard/signage/pairing/diagnostics) and
 # keep re-resolving on an interval so an operator can drop a corrected
 # /data/talaria/display.conf and recover without a reboot. See
 # docs/display-runtime-design.md.
