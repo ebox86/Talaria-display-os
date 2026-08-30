@@ -211,6 +211,17 @@ launch_count="${launch_count:-0}"
 [[ "$launch_count" -eq 1 ]] || ok=0
 check "keeps pairing browser alive during transient empty target" "$ok"
 
+# --- Scenario 3d: a transient empty state file does not interrupt an
+#     already-rendering browser; explicit diagnostics remains the stop signal.
+: > "$work_dir/mode-state.conf"
+sleep 2
+ok=1
+grep -q 'TALARIA_BROWSER_STOPPED mode=unknown' "$work_dir/console.log" 2>/dev/null && ok=0
+launch_count="$(grep -c 'TALARIA_BROWSER_LAUNCH url=local-pairing' "$work_dir/console.log" 2>/dev/null)"
+launch_count="${launch_count:-0}"
+[[ "$launch_count" -eq 1 ]] || ok=0
+check "keeps browser alive during transient empty state" "$ok"
+
 stop_supervisor
 
 wait_for_launch_count() {

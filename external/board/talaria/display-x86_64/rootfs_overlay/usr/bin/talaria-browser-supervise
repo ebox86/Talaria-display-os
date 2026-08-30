@@ -299,6 +299,11 @@ while true; do
         desired_target="$current_target"
       fi
       ;;
+    "")
+      # If the state file is temporarily unreadable or empty, preserve the
+      # active browser until the next clean resolver write lands.
+      desired_target="$current_target"
+      ;;
     *) desired_target="" ;;
   esac
 
