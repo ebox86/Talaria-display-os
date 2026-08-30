@@ -31,6 +31,40 @@ repair_grub2_image_cache() {
   fi
 }
 
+repair_browser_runtime_cache() {
+  local config_file="$output_dir/.config"
+  local target_dir="$output_dir/target"
+  local -a stamps=()
+
+  [[ -f "$config_file" ]] || return 0
+
+  if grep -qx 'BR2_PACKAGE_COG_PLATFORM_FDO=y' "$config_file" \
+    && [[ -d "$output_dir/build" ]] \
+    && [[ ! -e "$target_dir/usr/lib/cog/modules/libcogplatform-wl.so" ]] \
+    && ! find "$target_dir/usr/lib" -type f -name 'libcogplatform-wl.so*' -print -quit 2>/dev/null | grep -q .; then
+    shopt -s nullglob
+    stamps=("$output_dir"/build/cog-*/.stamp_configured "$output_dir"/build/cog-*/.stamp_built "$output_dir"/build/cog-*/.stamp_target_installed "$output_dir"/build/cog-*/.stamp_staging_installed)
+    shopt -u nullglob
+    if ((${#stamps[@]} > 0)); then
+      rm -f "${stamps[@]}"
+      echo "Invalidated cached Cog build/install stamps; Wayland platform module will be regenerated."
+    fi
+  fi
+
+  if grep -qx 'BR2_PACKAGE_WPEBACKEND_FDO=y' "$config_file" \
+    && [[ -d "$output_dir/build" ]] \
+    && [[ ! -e "$target_dir/usr/lib/libWPEBackend-fdo-1.0.so" ]] \
+    && ! find "$target_dir/usr/lib" -type f -name 'libWPEBackend-fdo-1.0.so*' -print -quit 2>/dev/null | grep -q .; then
+    shopt -s nullglob
+    stamps=("$output_dir"/build/wpebackend-fdo-*/.stamp_configured "$output_dir"/build/wpebackend-fdo-*/.stamp_built "$output_dir"/build/wpebackend-fdo-*/.stamp_target_installed "$output_dir"/build/wpebackend-fdo-*/.stamp_staging_installed)
+    shopt -u nullglob
+    if ((${#stamps[@]} > 0)); then
+      rm -f "${stamps[@]}"
+      echo "Invalidated cached wpebackend-fdo build/install stamps; WPE backend library will be regenerated."
+    fi
+  fi
+}
+
 if [[ ! -d "$buildroot_dir" ]]; then
   echo "Buildroot was not found at $buildroot_dir" >&2
   echo "Run ./scripts/bootstrap-buildroot.sh or set BUILDROOT_DIR." >&2
@@ -61,6 +95,7 @@ if grep -q '^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=' "$repo_root/external/confi
 fi
 
 repair_grub2_image_cache
+repair_browser_runtime_cache
 
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"

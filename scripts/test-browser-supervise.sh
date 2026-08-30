@@ -138,7 +138,7 @@ supervise_pid=$!
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=http://talaria.local/dashboard/' || ok=0
 grep -q 'cage args: -s --' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
-grep -q 'args: --platform=wayland http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
+grep -q 'args: --platform=wl http://talaria.local/dashboard/' "$work_dir/fake-browser.log" 2>/dev/null || ok=0
 check "auto backend launches through Cage and Cog Wayland" "$ok"
 
 # --- Scenario 1c: a duplicate supervisor exits instead of launching a

@@ -20,8 +20,8 @@ missing=()
 [[ -x "$target_dir/usr/bin/cage" ]] || missing+=("/usr/bin/cage")
 [[ -x "$target_dir/usr/bin/cog" ]] || missing+=("/usr/bin/cog")
 
-if ! find "$target_dir/usr/lib" -type f -name 'libcogplatform-wayland.so*' -print -quit 2>/dev/null | grep -q .; then
-  missing+=("/usr/lib/.../libcogplatform-wayland.so")
+if ! find "$target_dir/usr/lib" -type f -name 'libcogplatform-wl.so*' -print -quit 2>/dev/null | grep -q .; then
+  missing+=("/usr/lib/.../libcogplatform-wl.so")
 fi
 
 if ! find "$target_dir/usr/lib" -type f -name 'libcogplatform-drm.so*' -print -quit 2>/dev/null | grep -q .; then
