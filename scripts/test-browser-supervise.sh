@@ -89,7 +89,8 @@ check() {
 
 start_supervisor() {
   # $1=crash-mode $2=backoff_base $3=backoff_max $4=browser_runtime
-  # $5=stable_cycles. Defaults keep backoff effectively out of the way
+  # $5=stable_cycles $6=giveup_retry_delay.
+  # Defaults keep backoff effectively out of the way
   # (1s, same as poll interval) for scenarios that aren't specifically
   # testing backoff timing.
   : > "$work_dir/console.log"
@@ -103,7 +104,9 @@ start_supervisor() {
   TALARIA_BROWSER_BACKOFF_BASE="${2:-1}" \
   TALARIA_BROWSER_BACKOFF_MAX="${3:-1}" \
   TALARIA_BROWSER_STABLE_CYCLES="${5:-12}" \
+  TALARIA_BROWSER_GIVEUP_RETRY_DELAY="${6:-1}" \
   TALARIA_BROWSER_CLEANUP_DELAY=0 \
+  TALARIA_BROWSER_LOG="$work_dir/browser.log" \
   TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
   TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
   FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
@@ -140,6 +143,7 @@ TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
 TALARIA_CAGE_CMD="$work_dir/fake-cage" \
 TALARIA_BROWSER_POLL_INTERVAL=1 \
 TALARIA_BROWSER_CLEANUP_DELAY=0 \
+TALARIA_BROWSER_LOG="$work_dir/browser.log" \
 TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
 TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
 FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
@@ -159,6 +163,7 @@ TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
 TALARIA_CAGE_CMD="$work_dir/fake-cage" \
 TALARIA_BROWSER_POLL_INTERVAL=1 \
 TALARIA_BROWSER_CLEANUP_DELAY=0 \
+TALARIA_BROWSER_LOG="$work_dir/browser.log" \
 TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
 TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
 FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
@@ -210,7 +215,7 @@ check "detects a crashed browser and relaunches it" "$ok"
 #     visible give-up signal, matching the default TALARIA_BROWSER_MAX_CRASHES=3.
 #     Reuses the still-running crash-looping supervisor from scenario 4.
 ok=1
-wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/dashboard/ attempts=3' 15 || ok=0
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/dashboard/ attempts=3 retry_seconds=1' 15 || ok=0
 giveup_count="$(grep -c 'TALARIA_BROWSER_GIVING_UP' "$work_dir/console.log" 2>/dev/null)"
 giveup_count="${giveup_count:-0}"
 [[ "$giveup_count" -eq 1 ]] || ok=0
@@ -250,6 +255,26 @@ start_supervisor 1 1 1 4 12
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/delayed-crash/ attempts=3' 25 || ok=0
 check "delayed crashes still reach the give-up signal" "$ok"
+
+stop_supervisor
+
+# --- Scenario 8: once a target is visibly marked unavailable, retry
+#     much more slowly than the normal crash backoff.
+write_state "dashboard" "http://talaria.local/giveup-delay/"
+start_supervisor 1 1 1 0 12 5
+ok=1
+wait_for "$work_dir/console.log" 'TALARIA_BROWSER_GIVING_UP target=http://talaria.local/giveup-delay/ attempts=3 retry_seconds=5' 15 || ok=0
+launch_count_at_giveup="$(grep -c 'TALARIA_BROWSER_LAUNCH' "$work_dir/console.log" 2>/dev/null)"
+launch_count_at_giveup="${launch_count_at_giveup:-0}"
+sleep 2
+launch_count_mid_giveup_delay="$(grep -c 'TALARIA_BROWSER_LAUNCH' "$work_dir/console.log" 2>/dev/null)"
+launch_count_mid_giveup_delay="${launch_count_mid_giveup_delay:-0}"
+[[ "$launch_count_mid_giveup_delay" -eq "$launch_count_at_giveup" ]] || ok=0
+sleep 5
+launch_count_after_giveup_delay="$(grep -c 'TALARIA_BROWSER_LAUNCH' "$work_dir/console.log" 2>/dev/null)"
+launch_count_after_giveup_delay="${launch_count_after_giveup_delay:-0}"
+[[ "$launch_count_after_giveup_delay" -gt "$launch_count_mid_giveup_delay" ]] || ok=0
+check "give-up state slows retries after repeated crashes" "$ok"
 
 stop_supervisor
 

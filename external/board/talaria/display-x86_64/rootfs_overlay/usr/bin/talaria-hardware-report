@@ -1,0 +1,69 @@
+#!/bin/sh
+
+log="${TALARIA_HARDWARE_REPORT_LOG:-/data/talaria/hardware-report.log}"
+log_dir="${log%/*}"
+
+[ "$log_dir" = "$log" ] || mkdir -p "$log_dir" 2>/dev/null || true
+
+section() {
+  echo
+  echo "--- $1 ---"
+}
+
+run_if_available() {
+  label="$1"
+  shift
+
+  section "$label"
+  if command -v "$1" >/dev/null 2>&1; then
+    "$@" 2>&1 || true
+  else
+    echo "$1: not installed"
+  fi
+}
+
+{
+  echo "=== Talaria hardware report ==="
+  date 2>&1 || true
+
+  section "kernel"
+  uname -a 2>&1 || true
+  cat /proc/cmdline 2>&1 || true
+
+  section "cpu"
+  grep -m 1 -E 'model name|Hardware|Processor' /proc/cpuinfo 2>/dev/null || true
+  grep -m 1 '^flags' /proc/cpuinfo 2>/dev/null || true
+
+  section "memory"
+  grep -E 'MemTotal|MemAvailable|SwapTotal|SwapFree' /proc/meminfo 2>/dev/null || true
+
+  run_if_available "pci devices" lspci -nn
+  run_if_available "loaded modules" lsmod
+
+  section "drm devices"
+  ls -la /dev/dri 2>&1 || true
+  for card in /sys/class/drm/card*; do
+    [ -e "$card" ] || continue
+    echo
+    echo "$card"
+    readlink "$card/device/driver" 2>/dev/null || true
+    cat "$card/device/uevent" 2>/dev/null || true
+  done
+
+  section "mesa dri drivers"
+  find /usr/lib -path '*/dri/*.so' -print 2>/dev/null | sort || true
+
+  section "network"
+  ip addr show 2>&1 || true
+  ip route show 2>&1 || true
+  cat /etc/resolv.conf 2>&1 || true
+
+  section "recent drm/browser kernel messages"
+  dmesg 2>/dev/null | grep -iE 'drm|gpu|gbm|egl|mesa|virtio|i915|radeon|amdgpu|nouveau|vmwgfx|cage|cog|wayland' | tail -120 || true
+} >> "$log" 2>&1
+
+if [ -w /dev/console ]; then
+  echo "TALARIA_HARDWARE_REPORT_READY log=$log" > /dev/console
+fi
+
+exit 0

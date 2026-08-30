@@ -24,11 +24,11 @@ BR2_LINUX_KERNEL_NEEDS_HOST_LIBELF=y
 BR2_LINUX_KERNEL_INSTALL_TARGET=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-# 256M was enough for the original Phase 1 text-only image. WPEWebKit, Mesa,
-# ICU, and their transitive deps push the rootfs well past that; 1536M
-# leaves headroom. Re-check against actual `du -sh output/target` once
-# the browser stack builds successfully and shrink if there's slack.
-BR2_TARGET_ROOTFS_EXT2_SIZE="1536M"
+# 256M was enough for the original Phase 1 text-only image. WPEWebKit,
+# Mesa, ICU, LLVM, and broad Tier 2 Mesa drivers push the rootfs well
+# past that; leave headroom so CI fails on real build problems, not on
+# a too-small filesystem image.
+BR2_TARGET_ROOTFS_EXT2_SIZE="3072M"
 # BR2_TARGET_ROOTFS_TAR is not set
 BR2_TARGET_GRUB2=y
 BR2_TARGET_GRUB2_I386_PC=y
@@ -37,6 +37,7 @@ BR2_PACKAGE_CA_CERTIFICATES=y
 BR2_PACKAGE_ETHTOOL=y
 BR2_PACKAGE_IPROUTE2=y
 BR2_PACKAGE_KMOD=y
+BR2_PACKAGE_PCIUTILS=y
 BR2_PACKAGE_UTIL_LINUX=y
 BR2_PACKAGE_UTIL_LINUX_MOUNT=y
 BR2_PACKAGE_UTIL_LINUX_BLKID=y
@@ -92,19 +93,26 @@ BR2_PACKAGE_HOST_MTOOLS=y
 # (make linux-configure, the full build, etc.), just not the initial
 # defconfig merge itself. Fixed by setting the current name directly.
 #
-# Software rendering (Mesa's plain "softpipe" Gallium driver, no LLVM
-# dependency - not "llvmpipe", a separate LLVM-based driver this repo
-# doesn't use) is the default because target hardware GPUs are unknown
-# (docs/hardware-inventory.md is still all TBD) and there is no way to
-# validate hardware-accelerated GL in the GitHub-hosted CI runners or
-# the QEMU smoke test anyway. Once real target GPUs are known, revisit
-# with a hardware driver (e.g. BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_I915)
-# as a per-device optimization, not a default.
+# Tier 2 graphics support: keep software rendering fallbacks, plus add
+# broad x86 Mesa user-space coverage for common Intel, Radeon/AMD,
+# Nouveau, VMware, and QEMU/virtio paths. The kernel fragment already
+# carries the matching DRM modules where Linux has maintained support.
+# LLVM makes this heavier, but it is required for modern Intel Iris,
+# RadeonSI, and llvmpipe.
 BR2_PACKAGE_LIBDRM=y
 BR2_PACKAGE_MESA3D=y
+BR2_PACKAGE_MESA3D_LLVM=y
 BR2_PACKAGE_MESA3D_OPENGL_EGL=y
 BR2_PACKAGE_MESA3D_OPENGL_ES=y
 BR2_PACKAGE_MESA3D_GBM=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_CROCUS=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_I915=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_IRIS=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_LLVMPIPE=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_NOUVEAU=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R300=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600=y
+BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_RADEONSI=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SVGA=y
 BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL=y

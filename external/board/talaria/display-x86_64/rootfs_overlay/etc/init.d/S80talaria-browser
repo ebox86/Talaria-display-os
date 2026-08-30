@@ -14,6 +14,7 @@ browser_name="${browser_name:-cog}"
 cage_name="${TALARIA_CAGE_CMD##*/}"
 cage_name="${cage_name:-cage}"
 supervisor_cmd="${TALARIA_BROWSER_SUPERVISOR_CMD:-/usr/bin/talaria-browser-supervise}"
+xdg_runtime_dir="$run_dir/xdg-runtime"
 
 pidfile_is_running() {
   target_pidfile="$1"
@@ -27,6 +28,11 @@ pidfile_is_running() {
 clear_supervisor_lock() {
   rm -f "$lock_pidfile"
   rmdir "$lock_dir" 2>/dev/null || true
+}
+
+cleanup_wayland_runtime() {
+  [ -d "$xdg_runtime_dir" ] || return 0
+  rm -f "$xdg_runtime_dir"/wayland-* "$xdg_runtime_dir"/wayland-*.lock 2>/dev/null || true
 }
 
 kill_pidfile() {
@@ -69,6 +75,7 @@ case "$1" in
     clear_supervisor_lock
     kill_pidfile "$browser_pidfile"
     kill_browser_processes
+    cleanup_wayland_runtime
     "$supervisor_cmd" &
     echo $! > "$pidfile"
     ;;
@@ -77,6 +84,7 @@ case "$1" in
     kill_pidfile "$browser_pidfile"
     kill_browser_processes
     rm -f "$run_dir/browser.exited"
+    cleanup_wayland_runtime
     clear_supervisor_lock
     ;;
   restart|reload)

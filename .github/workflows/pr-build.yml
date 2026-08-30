@@ -32,7 +32,7 @@ jobs:
     # WPEWebKit builds from source; 120m was enough for the Phase 1
     # console-only image but is not enough headroom for that. Revisit
     # once we have real timing data from a successful run.
-    timeout-minutes: 300
+    timeout-minutes: 360
 
     steps:
       - name: Checkout

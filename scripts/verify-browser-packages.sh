@@ -22,12 +22,28 @@ fi
 required_symbols=(
   BR2_PACKAGE_LIBDRM
   BR2_PACKAGE_MESA3D
+  BR2_PACKAGE_MESA3D_LLVM
   BR2_PACKAGE_MESA3D_OPENGL_EGL
   BR2_PACKAGE_MESA3D_OPENGL_ES
   BR2_PACKAGE_MESA3D_GBM
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_CROCUS
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_I915
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_IRIS
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_LLVMPIPE
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_NOUVEAU
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R300
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_R600
+  BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_RADEONSI
   BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SOFTPIPE
   BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_SVGA
   BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_VIRGL
+  BR2_PACKAGE_LIBDRM_INTEL
+  BR2_PACKAGE_LIBDRM_RADEON
+  BR2_PACKAGE_LIBDRM_AMDGPU
+  BR2_PACKAGE_LIBDRM_NOUVEAU
+  BR2_PACKAGE_LLVM
+  BR2_PACKAGE_LLVM_AMDGPU
+  BR2_PACKAGE_LLVM_RTTI
   # These two are what wpewebkit's Config.in actually `depends on` -
   # checking them directly, not just the Mesa options that are supposed
   # to provide them, is what would have caught the MESA3D_OPENGL_ES2-
@@ -49,6 +65,8 @@ required_symbols=(
   # Cog starts and for diagnostics/fallback states.
   BR2_PACKAGE_FBV
   BR2_PACKAGE_FBV_PNG
+  # Hardware diagnostics for field reports.
+  BR2_PACKAGE_PCIUTILS
   # Runtime assets for the browser, not just link-time libraries. These
   # caught the first real boot where Cog could launch and load a page,
   # but the image had no installed fonts and no /usr/share/X11/xkb data

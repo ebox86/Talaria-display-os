@@ -31,7 +31,7 @@ On apt-based Linux hosts, install `libelf-dev` before building. The x86_64 Linux
 
 CI installs the common Buildroot host tools explicitly, including `diffutils`, `findutils`, `gawk`, `sed`, `curl`, and `wget`, plus a best-effort set of extras for the WPEWebKit/Cog/Mesa build (`cmake`, `ninja-build`, `bison`, `flex`, `gperf`, `ruby`, and others — see `scripts/ci-install-deps.sh`). Buildroot builds most of its own host tooling from source, so this list may still be missing something the first time it actually runs; a build failing on a missing host command is a one-line fix to that script.
 
-The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `1536M` to leave room for WPEWebKit/Mesa/ICU, up from `256M` for the original Phase 1 text-only image.
+The rootfs image size (`BR2_TARGET_ROOTFS_EXT2_SIZE`) is `3072M` to leave room for WPEWebKit/Mesa/ICU plus LLVM-backed Mesa drivers, up from `256M` for the original Phase 1 text-only image.
 
 ## Kernel Pin
 
@@ -187,6 +187,7 @@ The script asks for `YES` before writing.
 - Talaria PNG splash appears on the primary display.
 - Wired DHCP comes up.
 - `/data/talaria/phase1.log` exists.
+- `/data/talaria/hardware-report.log` exists and includes PCI, DRM, network, and recent kernel graphics messages.
 - `/data/talaria/phase1.log` persists after reboot.
 - The Talaria server can be reached by the intended application protocol; ICMP ping is useful diagnostics, but not required for browser launch.
 
@@ -195,4 +196,5 @@ The script asks for `YES` before writing.
 - This pass is BIOS-first, not UEFI.
 - Root is currently configured as `/dev/sda1`.
 - Persistent data is currently expected at `/dev/sda2`, with fallback probes for older/QEMU names.
-- The direct WPE/Cog DRM browser stack has completed real Buildroot builds and rendered a local browser test page in a VM. The newer Cage + Cog Wayland runtime path still needs the next CI build and VM boot before we can treat it as proven — see [`display-runtime-design.md`](display-runtime-design.md#browser-phase).
+- The browser subprocess log is written to `/data/talaria/browser.log`. Pull that together with `/data/talaria/display-mode.log`, `/data/talaria/hardware-report.log`, and `/data/talaria/phase1.log` when a device renders poorly or crashes.
+- Cage + Cog Wayland is the default browser path, with direct Cog DRM still built as a fallback/debug backend — see [`display-runtime-design.md`](display-runtime-design.md#browser-phase).
