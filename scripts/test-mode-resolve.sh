@@ -207,6 +207,49 @@ TALARIA_DISPLAY_MODE=diagnostics" \
   "pairing" "no" \
   "$assignment_fetch_pairing"
 
+stable_pairing_etc="$work_dir/stable-pairing.etc.conf"
+stable_pairing_data="$work_dir/stable-pairing.data.conf"
+stable_pairing_log="$work_dir/stable-pairing.log"
+stable_pairing_state="$work_dir/stable-pairing.mode-state.conf"
+printf '%s\n' \
+  "TALARIA_DISPLAY_MODE=pairing" \
+  "TALARIA_DEVICE_ID=display-01" \
+  > "$stable_pairing_etc"
+: > "$stable_pairing_data"
+ok=1
+TALARIA_ETC_CONF="$stable_pairing_etc" \
+TALARIA_DATA_CONF="$stable_pairing_data" \
+TALARIA_STATE_LOG="$stable_pairing_log" \
+TALARIA_MODE_STATE="$stable_pairing_state" \
+TALARIA_PAIRING_URL_CMD="$pairing_url" \
+TALARIA_PAIRING_CODE_FILE="$work_dir/stable-pairing-code" \
+  sh "$resolver" >/dev/null 2>&1 || ok=0
+# shellcheck disable=SC1090
+. "$stable_pairing_state" 2>/dev/null || ok=0
+first_pairing_url="${DISPLAY_URL:-}"
+TALARIA_ETC_CONF="$stable_pairing_etc" \
+TALARIA_DATA_CONF="$stable_pairing_data" \
+TALARIA_STATE_LOG="$stable_pairing_log" \
+TALARIA_MODE_STATE="$stable_pairing_state" \
+TALARIA_PAIRING_URL_CMD="$pairing_url" \
+TALARIA_PAIRING_CODE_FILE="$work_dir/stable-pairing-code" \
+  sh "$resolver" >/dev/null 2>&1 || ok=0
+# shellcheck disable=SC1090
+. "$stable_pairing_state" 2>/dev/null || ok=0
+[[ "${DISPLAY_URL:-}" == "$first_pairing_url" ]] || ok=0
+if compgen -G "$stable_pairing_state.*" >/dev/null; then
+  ok=0
+fi
+if [[ "$ok" -eq 1 ]]; then
+  echo "PASS: repeated pairing resolves keep browser URL stable"
+  pass_count=$((pass_count + 1))
+else
+  echo "FAIL: repeated pairing resolves keep browser URL stable"
+  echo "--- $stable_pairing_state ---"
+  cat "$stable_pairing_state" 2>/dev/null || echo "(no mode-state file written)"
+  fail_count=$((fail_count + 1))
+fi
+
 unsafe_fetch_marker="$work_dir/unsafe-fetch-was-called"
 unsafe_assignment_fetch="$work_dir/unsafe-fetch-assignment"
 cat > "$unsafe_assignment_fetch" <<EOF

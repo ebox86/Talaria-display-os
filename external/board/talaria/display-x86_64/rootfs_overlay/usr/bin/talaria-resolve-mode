@@ -62,6 +62,31 @@ quote_state_value() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g'
 }
 
+write_mode_state() {
+  state_dir="$(dirname "$mode_state")"
+  tmp_state="${mode_state}.$$"
+
+  mkdir -p "$state_dir" 2>/dev/null
+  {
+    echo "EFFECTIVE_MODE=\"$(quote_state_value "$effective_mode")\""
+    echo "DISPLAY_URL=\"$(quote_state_value "$state_url")\""
+    echo "FALLBACK_REASON=\"$(quote_state_value "$reason")\""
+    echo "DEVICE_ID=\"$(quote_state_value "$device_id")\""
+    echo "ASSIGNMENT_SOURCE=\"$(quote_state_value "$assignment_source")\""
+    echo "ASSIGNMENT_FETCH_STATUS=\"$(quote_state_value "$assignment_fetch_status")\""
+    echo "ASSIGNMENT_REFRESH_SECONDS=\"$(quote_state_value "$assignment_refresh_seconds")\""
+    echo "RESOLVED_AT=\"$(date)\""
+  } > "$tmp_state" 2>/dev/null || {
+    rm -f "$tmp_state"
+    return 1
+  }
+
+  mv -f "$tmp_state" "$mode_state" 2>/dev/null || {
+    rm -f "$tmp_state"
+    return 1
+  }
+}
+
 strip_assignment_value() {
   value="$1"
   case "$value" in
@@ -249,17 +274,7 @@ mkdir -p "$(dirname "$state_log")" 2>/dev/null
   echo
 } >> "$state_log" 2>&1
 
-mkdir -p "$(dirname "$mode_state")" 2>/dev/null
-{
-  echo "EFFECTIVE_MODE=\"$(quote_state_value "$effective_mode")\""
-  echo "DISPLAY_URL=\"$(quote_state_value "$state_url")\""
-  echo "FALLBACK_REASON=\"$(quote_state_value "$reason")\""
-  echo "DEVICE_ID=\"$(quote_state_value "$device_id")\""
-  echo "ASSIGNMENT_SOURCE=\"$(quote_state_value "$assignment_source")\""
-  echo "ASSIGNMENT_FETCH_STATUS=\"$(quote_state_value "$assignment_fetch_status")\""
-  echo "ASSIGNMENT_REFRESH_SECONDS=\"$(quote_state_value "$assignment_refresh_seconds")\""
-  echo "RESOLVED_AT=\"$(date)\""
-} > "$mode_state" 2>/dev/null
+write_mode_state
 
 if [ -n "$reason" ]; then
   run_splash diagnostics "Fallback: $reason"
