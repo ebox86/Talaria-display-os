@@ -40,6 +40,7 @@
 #   TALARIA_BROWSER_STABLE_CYCLES default 12 (consecutive healthy cycles before the crash count resets)
 #   TALARIA_BROWSER_BACKOFF_BASE  default 5 (seconds; delay before the 1st relaunch attempt after a crash)
 #   TALARIA_BROWSER_BACKOFF_MAX   default 60 (seconds; backoff cap)
+#   TALARIA_BROWSER_CLEANUP_DELAY default 2 (seconds; pause after killing browser stack)
 #   TALARIA_BROWSER_RUN_DIR       default /run/talaria
 #   TALARIA_CONSOLE_DEVICE        default /dev/console
 #   TALARIA_XCOMPOSEFILE          default /usr/share/talaria/empty-compose
@@ -53,6 +54,8 @@ mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
 browser_backend="${TALARIA_BROWSER_BACKEND:-auto}"
 browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
 cage_cmd="${TALARIA_CAGE_CMD:-cage}"
+browser_name="${browser_cmd##*/}"
+cage_name="${cage_cmd##*/}"
 cage_args="${TALARIA_CAGE_ARGS--s}"
 browser_platform="${TALARIA_COG_PLATFORM:-drm}"
 browser_platform_params="${TALARIA_COG_PLATFORM_PARAMS-}"
@@ -63,6 +66,7 @@ max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"
 stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-12}"
 backoff_base="${TALARIA_BROWSER_BACKOFF_BASE:-5}"
 backoff_max="${TALARIA_BROWSER_BACKOFF_MAX:-60}"
+cleanup_delay="${TALARIA_BROWSER_CLEANUP_DELAY:-2}"
 run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 xcompose_file="${TALARIA_XCOMPOSEFILE:-/usr/share/talaria/empty-compose}"
@@ -137,14 +141,47 @@ use_cage_backend() {
 current_pid=""
 current_target=""
 
-stop_browser() {
-  if [ -n "$current_pid" ]; then
-    if [ -f "$browser_pid_file" ]; then
-      kill "$(cat "$browser_pid_file")" 2>/dev/null
+kill_browser_processes() {
+  command -v pidof >/dev/null 2>&1 || return 0
+
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
+cleanup_wayland_runtime() {
+  [ -d "$xdg_runtime_dir" ] || return 0
+  rm -f "$xdg_runtime_dir"/wayland-* "$xdg_runtime_dir"/wayland-*.lock 2>/dev/null || true
+}
+
+cleanup_browser_runtime() {
+  if [ -f "$browser_pid_file" ]; then
+    browser_pid="$(cat "$browser_pid_file" 2>/dev/null || true)"
+    if [ -n "$browser_pid" ]; then
+      kill "$browser_pid" 2>/dev/null || true
     fi
-    kill "$current_pid" 2>/dev/null
-    wait "$current_pid" 2>/dev/null
   fi
+
+  if [ -n "$current_pid" ]; then
+    kill "$current_pid" 2>/dev/null || true
+    wait "$current_pid" 2>/dev/null || true
+  fi
+
+  kill_browser_processes
+  cleanup_wayland_runtime
+  if [ "$cleanup_delay" -gt 0 ] 2>/dev/null; then
+    sleep "$cleanup_delay"
+  fi
+}
+
+stop_browser() {
+  cleanup_browser_runtime
   current_pid=""
   current_target=""
   rm -f "$browser_pid_file" "$exit_marker"
@@ -162,6 +199,7 @@ trap release_supervisor_lock EXIT
 
 start_browser() {
   target="$1"
+  cleanup_browser_runtime
   rm -f "$browser_pid_file" "$exit_marker"
   (
     if use_cage_backend; then
@@ -206,10 +244,12 @@ while true; do
   crashed_this_cycle=0
   if [ -n "$current_pid" ] && [ -f "$exit_marker" ]; then
     console_status "TALARIA_BROWSER_CRASHED target=$current_target"
+    cleanup_browser_runtime
     current_pid=""
     crashed_this_cycle=1
     crash_count=$((crash_count + 1))
     healthy_cycles=0
+    rm -f "$browser_pid_file" "$exit_marker"
 
     # delay = backoff_base * 2^(crash_count-1), capped at backoff_max.
     delay="$backoff_base"

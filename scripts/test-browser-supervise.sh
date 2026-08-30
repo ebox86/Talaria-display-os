@@ -39,6 +39,14 @@ chmod +x "$work_dir/fake-browser"
 cat > "$work_dir/fake-cage" <<'EOF'
 #!/bin/sh
 echo "$(date) cage args: $*" >> "$FAKE_BROWSER_LOG"
+if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
+  mkdir -p "$XDG_RUNTIME_DIR"
+  if [ -e "$XDG_RUNTIME_DIR/wayland-0.lock" ]; then
+    echo "$(date) stale wayland lock was not cleaned" >> "$FAKE_BROWSER_LOG"
+    exit 70
+  fi
+  : > "$XDG_RUNTIME_DIR/wayland-0.lock"
+fi
 while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do
   shift
 done
@@ -95,6 +103,7 @@ start_supervisor() {
   TALARIA_BROWSER_BACKOFF_BASE="${2:-1}" \
   TALARIA_BROWSER_BACKOFF_MAX="${3:-1}" \
   TALARIA_BROWSER_STABLE_CYCLES="${5:-12}" \
+  TALARIA_BROWSER_CLEANUP_DELAY=0 \
   TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
   TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
   FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
@@ -130,6 +139,7 @@ TALARIA_MODE_STATE="$work_dir/mode-state.conf" \
 TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
 TALARIA_CAGE_CMD="$work_dir/fake-cage" \
 TALARIA_BROWSER_POLL_INTERVAL=1 \
+TALARIA_BROWSER_CLEANUP_DELAY=0 \
 TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
 TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
 FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
@@ -148,6 +158,7 @@ TALARIA_MODE_STATE="$work_dir/mode-state.conf" \
 TALARIA_BROWSER_CMD="$work_dir/fake-browser" \
 TALARIA_CAGE_CMD="$work_dir/fake-cage" \
 TALARIA_BROWSER_POLL_INTERVAL=1 \
+TALARIA_BROWSER_CLEANUP_DELAY=0 \
 TALARIA_BROWSER_RUN_DIR="$work_dir/run" \
 TALARIA_CONSOLE_DEVICE="$work_dir/console.log" \
 FAKE_BROWSER_LOG="$work_dir/fake-browser.log" \
