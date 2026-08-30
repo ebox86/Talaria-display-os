@@ -35,6 +35,9 @@ jobs:
       - name: Test mode-resolve logic
         run: ./scripts/test-mode-resolve.sh
 
+      - name: Test pairing page generation
+        run: ./scripts/test-pairing-url.sh
+
       - name: Test browser-supervise logic
         run: ./scripts/test-browser-supervise.sh
 

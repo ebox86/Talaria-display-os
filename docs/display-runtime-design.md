@@ -84,7 +84,7 @@ With that shape, an unassigned server can leave the display on the local pairing
 | `pairing` | Local browser page with a pairing code and device details for tenant Workbench claiming. | no | no | Display OS itself |
 | `diagnostics` | Local status and recovery screen. Also the automatic fallback target for every other mode. | no | no | Display OS itself |
 
-`dashboard`, `signage`, and `pairing` all use the same supervised kiosk browser. `dashboard` and `signage` load server-assigned URLs; `pairing` loads a generated local `data:text/html;base64,...` page from `usr/bin/talaria-pairing-url`, avoiding DNS, a local web server, and local file MIME behavior.
+`dashboard`, `signage`, and `pairing` all use the same supervised kiosk browser. `dashboard` and `signage` load server-assigned URLs; `pairing` loads a generated local `data:text/html;base64,...` page from `usr/bin/talaria-pairing-url`, avoiding DNS, a local web server, and local file MIME behavior. The pairing page deliberately does not use a browser-side meta refresh; the resolver/supervisor update it only when mode state changes, because WebKit can turn a refreshed data URL into a visible "Frame load interrupted" error page.
 
 `diagnostics` is the odd one out: it is rendered locally, requires nothing from the network or the server, and must always be reachable even if `/data` failed to mount, DHCP never came up, or the config file is empty or corrupt. The Phase 1 framebuffer splash (`usr/bin/talaria-splash`) shows the baked Talaria PNG when framebuffer rendering is available, with console text fallback when it is not. A later phase can replace it with a richer local renderer without changing the contract: diagnostics never depends on external content.
 

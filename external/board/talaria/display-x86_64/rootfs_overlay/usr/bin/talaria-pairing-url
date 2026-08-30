@@ -29,18 +29,29 @@ make_pairing_code() {
     esac
   fi
 
+  code_dir="${pairing_code_file%/*}"
+  [ "$code_dir" = "$pairing_code_file" ] || mkdir -p "$code_dir" 2>/dev/null || true
+
   raw="$(od -An -N4 -tu4 /dev/urandom 2>/dev/null | tr -d ' ' || true)"
-  if [ -z "$raw" ]; then
-    seed="$device_id $(cat /proc/sys/kernel/random/boot_id 2>/dev/null) $(cat /sys/class/net/*/address 2>/dev/null) $(date +%s 2>/dev/null)"
-    raw="$(printf '%s' "$seed" | cksum | awk '{print $1}')"
+  if [ -n "$raw" ]; then
+    code="$(awk -v n="$raw" 'BEGIN { printf "%08d", n % 100000000 }')"
+    code="${code%????}-${code#????}"
+    if [ ! -d "$pairing_code_file" ] && printf '%s\n' "$code" > "$pairing_code_file" 2>/dev/null; then
+      printf '%s\n' "$code"
+      return 0
+    fi
   fi
 
+  # If /data is unavailable, keep the code stable for this boot so the
+  # resolver does not hand the browser a different data URL every cycle.
+  seed="$device_id $(cat /proc/sys/kernel/random/boot_id 2>/dev/null) $(cat /sys/class/net/*/address 2>/dev/null)"
+  raw="$(printf '%s' "$seed" | cksum | awk '{print $1}')"
   code="$(awk -v n="$raw" 'BEGIN { printf "%08d", n % 100000000 }')"
   code="${code%????}-${code#????}"
 
-  code_dir="${pairing_code_file%/*}"
-  [ "$code_dir" = "$pairing_code_file" ] || mkdir -p "$code_dir" 2>/dev/null || true
-  printf '%s\n' "$code" > "$pairing_code_file" 2>/dev/null || true
+  if [ ! -d "$pairing_code_file" ]; then
+    printf '%s\n' "$code" > "$pairing_code_file" 2>/dev/null || true
+  fi
   printf '%s\n' "$code"
 }
 
@@ -60,7 +71,6 @@ cat > "$tmp_file" <<EOF
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="60">
   <title>Talaria Pairing</title>
   <style>
     :root {
@@ -242,7 +252,7 @@ cat > "$tmp_file" <<EOF
           <div class="value">$status_label</div>
         </div>
         <div class="row">
-          <div class="label">Refresh</div>
+          <div class="label">Assignment Poll</div>
           <div class="value">${refresh_label}s</div>
         </div>
       </div>
