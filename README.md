@@ -12,7 +12,7 @@ Phase 1 is a display/network bring-up image:
 old PC boots USB/rootfs -> framebuffer PNG splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf`, `/data/talaria/display.conf`, and an optional server assignment endpoint, defaults fresh/unconfigured devices to the baked Talaria logo, falls back to `diagnostics` on any invalid or unreachable config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
+Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf`, `/data/talaria/display.conf`, and an optional server assignment endpoint, defaults fresh/unconfigured devices to the baked Talaria logo, falls back to `diagnostics` on invalid config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
 
 The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). The WPE/Cog/Mesa Buildroot package wiring has been validated by real from-source CI builds: the defconfig resolves cleanly, WPEWebKit/Cog/Mesa compile, and the resulting image boots in QEMU. The browser path has also rendered a local HTML/CSS/font test page in a VM. `scripts/verify-browser-packages.sh` still catches an obviously wrong or renamed symbol fast, before paying the multi-hour build cost again. What's still unproven is real hardware and rendering the real Talaria dashboard/signage pages from the app/server stack. See `docs/hardware-inventory.md`.
 
@@ -183,7 +183,7 @@ The flashing script is intentionally defensive and requires explicit confirmatio
 Success for the first real milestone:
 
 ```text
-Old PC boots -> shows splash -> gets DHCP -> pings Talaria server -> writes /data/talaria/phase1.log
+Old PC boots -> shows splash -> gets DHCP -> writes /data/talaria/phase1.log -> launches assigned browser content when configured
 ```
 
 Browser-stack code, mode resolution, assignment polling, and supervision are now part of the image. The next milestone is proving the same path on at least one real target workstation, then wiring the matching assignment endpoint in edge-api/workbench once those branches are current.

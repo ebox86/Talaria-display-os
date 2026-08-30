@@ -75,7 +75,7 @@ EOF
 - The machine boots unattended after BIOS setup.
 - The Talaria PNG splash appears before diagnostics finish.
 - Network comes up without manual driver work.
-- The Talaria server can be pinged.
+- The Talaria server can be reached by the intended application protocol. ICMP ping is still useful diagnostics when the network allows it, but some valid HTTP targets drop ping.
 - `/data/talaria/phase1.log` survives reboot.
 - `/data/talaria/data-mount.log` says the data partition mounted.
 - `/data/talaria/display-mode.log` shows an `effective_mode` line, with a `fallback_reason` line only when fallback was actually triggered.

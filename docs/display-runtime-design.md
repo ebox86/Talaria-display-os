@@ -37,7 +37,7 @@ Two files, same field names, two roles:
 
 | Field | Required | Default (`/etc`) | Notes |
 | --- | --- | --- | --- |
-| `TALARIA_SERVER_HOST` | no | `talaria.local` | Hostname or IP used for reachability checks and, later, the server contract calls. |
+| `TALARIA_SERVER_HOST` | no | `talaria.local` | Hostname or IP logged by bring-up diagnostics and optionally returned by assignment. It is not used as an ICMP gate for browser launch. |
 | `TALARIA_SERVER_BASE_URL` | no | empty | Base URL for the Talaria control plane, e.g. `http://192.168.1.50:17444`. When set and `TALARIA_ASSIGNMENT_URL` is empty, the resolver polls `<base>/api/workflow/display/assignment.env`. |
 | `TALARIA_ASSIGNMENT_URL` | no | empty | Full assignment endpoint URL. Takes precedence over `TALARIA_SERVER_BASE_URL`; useful for test rigs or nonstandard deployments. |
 | `TALARIA_DEVICE_TOKEN` | no | empty | Optional pairing/auth token appended to assignment requests as `deviceToken`. Token issuance belongs to Workbench/edge-api; the OS only stores and sends it. |
@@ -99,7 +99,7 @@ S70talaria-mode-resolve   decide effective mode, retry loop, write mode-state.co
 S80talaria-browser        supervise the browser against mode-state.conf
 ```
 
-`S70talaria-mode-resolve` is a thin init wrapper (`etc/init.d/S70talaria-mode-resolve`) around a single-shot resolver (`usr/bin/talaria-resolve-mode`). The wrapper runs the resolver once at `start`, then backgrounds a loop that re-runs it every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15). When a server assignment provides `TALARIA_ASSIGNMENT_REFRESH_SECONDS`, the wrapper uses that value for the next sleep, clamped to 5-3600 seconds. The resolver itself is pure enough to unit-test on the build host — its config paths, reachability probe, and assignment fetch command are environment-overridable, and `scripts/test-mode-resolve.sh` exercises the cases below without needing Buildroot or QEMU.
+`S70talaria-mode-resolve` is a thin init wrapper (`etc/init.d/S70talaria-mode-resolve`) around a single-shot resolver (`usr/bin/talaria-resolve-mode`). The wrapper runs the resolver once at `start`, then backgrounds a loop that re-runs it every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15). When a server assignment provides `TALARIA_ASSIGNMENT_REFRESH_SECONDS`, the wrapper uses that value for the next sleep, clamped to 5-3600 seconds. The resolver itself is pure enough to unit-test on the build host — its config paths and assignment fetch command are environment-overridable, and `scripts/test-mode-resolve.sh` exercises the cases below without needing Buildroot or QEMU.
 
 Resolution logic, in order (each retry cycle, from scratch):
 
@@ -109,8 +109,7 @@ Resolution logic, in order (each retry cycle, from scratch):
 4. If assignment fetch fails, continue with the local config values. This keeps a temporarily unreachable server from wiping out a direct local override, while fresh devices still remain in diagnostics by default.
 5. If `TALARIA_DISPLAY_MODE` is not one of `dashboard`, `signage`, `diagnostics` — fall back to `diagnostics`.
 6. If the resolved mode is `dashboard` or `signage` and `TALARIA_DISPLAY_URL` is unset or not a well-formed `http(s)://` URL — fall back to `diagnostics`.
-7. If the resolved mode is `dashboard` or `signage`, probe reachability of `TALARIA_SERVER_HOST` with `ping -c 1 -W 2` — if unreachable, hold in `diagnostics` and keep retrying rather than launching a browser at a dead URL.
-8. Otherwise, resolve to the configured mode and hand it to the browser supervisor via the state file below.
+7. Otherwise, resolve to the configured mode and hand it to the browser supervisor via the state file below. Do not block browser launch on ICMP reachability: real web hosts often drop ping while HTTP still works, and the browser/control plane are the right layers to report load failures.
 
 This keeps `diagnostics` as both a first-class mode an operator can pin a device to, and the automatic result of every failure path above. Each resolution — success or fallback — is appended to `/data/talaria/display-mode.log` and echoed to the console as `TALARIA_MODE_RESOLVED mode=<mode> url=<url>` or `TALARIA_MODE_FALLBACK reason="<reason>" configured_mode=<mode>`, which `scripts/qemu-smoke-test.sh` checks for.
 
@@ -139,7 +138,7 @@ Fallback to `diagnostics` is triggered by any of:
 - No default route within the existing 30s network-wait window.
 - `/data/talaria/display.conf` present but unparseable, or absent along with a missing/invalid `/etc/talaria/display.conf` default.
 - `TALARIA_DISPLAY_MODE` set to anything other than `dashboard`, `signage`, or `diagnostics`.
-- `TALARIA_DISPLAY_URL` unset, malformed, or unreachable for `dashboard`/`signage`.
+- `TALARIA_DISPLAY_URL` unset or malformed for `dashboard`/`signage`.
 - The browser process crashes or exits unexpectedly (`usr/bin/talaria-browser-supervise` detects this and relaunches — see [Browser Phase](#browser-phase)).
 
 While in fallback, the device:
@@ -149,7 +148,7 @@ While in fallback, the device:
 - Retries every `TALARIA_MODE_RESOLVE_INTERVAL` seconds (default 15) without requiring a reboot. Each retry re-reads both config files from scratch, so dropping a corrected `/data/talaria/display.conf` is enough to recover on its own within one interval — no manual restart, no reflash. (`S70talaria-mode-resolve restart` still works too, matching the manual-restart workaround `first-boot-test.md` already documents for Phase 1.)
 - Never hard-fails the boot. A device that can never reach its server still runs as a working diagnostics appliance indefinitely, not a device that stops responding.
 
-Backoff is intentionally flat (fixed interval, not exponential) — a display endpoint recovering from a config fix or a flaky link should come back quickly, and there's no external service being hammered by a `ping` every 15s.
+Backoff is intentionally flat (fixed interval, not exponential) — a display endpoint recovering from a config fix or a flaky link should come back quickly. The resolver does not ping arbitrary browser targets every cycle; assignment fetch failures and browser health are handled separately.
 
 ## Server Contract
 

@@ -18,7 +18,7 @@ The image should:
 - mount persistent `/data` from partition 2 labeled `TALARIA_DATA`
 - acquire wired DHCP
 - write diagnostic logs under `/data/talaria`
-- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on any invalid or unreachable config
+- resolve an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falling back to `diagnostics` on invalid config
 - supervise a WPE/Cog kiosk browser against the resolved mode, relaunching on crash or on a URL change, stopping it entirely in `diagnostics`
 
 See [`display-runtime-design.md`](display-runtime-design.md) for the full mode/fallback/browser-supervision design.
@@ -188,7 +188,7 @@ The script asks for `YES` before writing.
 - Wired DHCP comes up.
 - `/data/talaria/phase1.log` exists.
 - `/data/talaria/phase1.log` persists after reboot.
-- The Talaria server can be pinged by IP or hostname.
+- The Talaria server can be reached by the intended application protocol; ICMP ping is useful diagnostics, but not required for browser launch.
 
 ## Known Constraints
 

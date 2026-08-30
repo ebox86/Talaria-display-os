@@ -2,7 +2,7 @@
 # Exercise usr/bin/talaria-resolve-mode's validation/fallback logic
 # directly on the build host, without a Buildroot image or QEMU. This
 # only checks the shell logic itself; it does not validate init
-# sequencing, chmod bits, or actual boot behavior — see
+# sequencing, chmod bits, network reachability, or actual boot behavior — see
 # scripts/qemu-smoke-test.sh for that.
 set -euo pipefail
 
@@ -14,9 +14,9 @@ trap 'rm -rf "$work_dir"' EXIT
 pass_count=0
 fail_count=0
 
-# run_case NAME ETC_CONTENT DATA_CONTENT PING_CMD EXPECT_MODE EXPECT_FALLBACK(yes/no) [FETCH_CMD]
+# run_case NAME ETC_CONTENT DATA_CONTENT UNUSED_REACHABILITY_CMD EXPECT_MODE EXPECT_FALLBACK(yes/no) [FETCH_CMD]
 run_case() {
-  local name="$1" etc_content="$2" data_content="$3" ping_cmd="$4" expect_mode="$5" expect_fallback="$6"
+  local name="$1" etc_content="$2" data_content="$3" _unused_reachability_cmd="$4" expect_mode="$5" expect_fallback="$6"
   local fetch_cmd="${7:-}"
   local etc_conf="$work_dir/$name.etc.conf"
   local data_conf="$work_dir/$name.data.conf"
@@ -41,7 +41,6 @@ run_case() {
     TALARIA_DATA_CONF="$data_conf" \
     TALARIA_STATE_LOG="$state_log" \
     TALARIA_MODE_STATE="$mode_state" \
-    TALARIA_PING_CMD="$ping_cmd" \
     TALARIA_FETCH_CMD="$fetch_cmd" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   else
@@ -49,7 +48,6 @@ run_case() {
     TALARIA_DATA_CONF="$data_conf" \
     TALARIA_STATE_LOG="$state_log" \
     TALARIA_MODE_STATE="$mode_state" \
-    TALARIA_PING_CMD="$ping_cmd" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   fi
 
@@ -140,13 +138,13 @@ TALARIA_DISPLAY_URL=talaria.local/dashboard" \
   "true" \
   "diagnostics" "yes"
 
-run_case "unreachable-server" \
+run_case "server-host-ping-is-not-a-browser-gate" \
   "" \
   "TALARIA_DISPLAY_MODE=dashboard
 TALARIA_DISPLAY_URL=http://talaria.local:5173/dashboard/
 TALARIA_SERVER_HOST=talaria.local" \
   "false" \
-  "diagnostics" "yes"
+  "dashboard" "no"
 
 run_case "no-config-at-all-still-resolves" \
   "" \

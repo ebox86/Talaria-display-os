@@ -8,15 +8,13 @@
 # retry loop so a corrected /data/talaria/display.conf recovers without a
 # reboot.
 #
-# Paths and the reachability probe are overridable via environment
-# variables so this can be exercised outside the target rootfs, e.g. by
-# scripts/test-mode-resolve.sh:
+# Paths are overridable via environment variables so this can be
+# exercised outside the target rootfs, e.g. by scripts/test-mode-resolve.sh:
 #
 #   TALARIA_ETC_CONF       default /etc/talaria/display.conf
 #   TALARIA_DATA_CONF      default /data/talaria/display.conf
 #   TALARIA_STATE_LOG      default /data/talaria/display-mode.log
 #   TALARIA_MODE_STATE     default /run/talaria/mode-state.conf
-#   TALARIA_PING_CMD       default "ping -c 1 -W 2"
 #   TALARIA_FETCH_CMD      default "wget -q -O -"
 #   TALARIA_CONSOLE_DEVICE default /dev/console
 #
@@ -30,7 +28,6 @@ etc_conf="${TALARIA_ETC_CONF:-/etc/talaria/display.conf}"
 data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
 state_log="${TALARIA_STATE_LOG:-/data/talaria/display-mode.log}"
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
-ping_cmd="${TALARIA_PING_CMD:-ping -c 1 -W 2}"
 fetch_cmd="${TALARIA_FETCH_CMD:-wget -q -O -}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
@@ -191,9 +188,6 @@ elif [ "$configured_mode" != "diagnostics" ]; then
   if ! is_http_url "$display_url"; then
     effective_mode="diagnostics"
     reason="TALARIA_DISPLAY_URL is unset or not http(s)"
-  elif [ -n "$server_host" ] && ! $ping_cmd "$server_host" >/dev/null 2>&1; then
-    effective_mode="diagnostics"
-    reason="cannot reach TALARIA_SERVER_HOST ($server_host)"
   fi
 fi
 
