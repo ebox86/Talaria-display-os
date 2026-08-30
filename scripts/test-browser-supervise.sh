@@ -200,6 +200,17 @@ wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=local-pairing' || o
 wait_for "$work_dir/fake-browser.log" 'args: --platform=drm data:text/html;base64,PGh0bWw+PC9odG1sPgo=' || ok=0
 check "launches local pairing page in pairing mode" "$ok"
 
+# --- Scenario 3c: a transient empty URL in a browser-capable mode does
+#     not interrupt an already-rendering pairing page.
+write_state "pairing" ""
+sleep 2
+ok=1
+grep -q 'TALARIA_BROWSER_STOPPED mode=pairing' "$work_dir/console.log" 2>/dev/null && ok=0
+launch_count="$(grep -c 'TALARIA_BROWSER_LAUNCH url=local-pairing' "$work_dir/console.log" 2>/dev/null)"
+launch_count="${launch_count:-0}"
+[[ "$launch_count" -eq 1 ]] || ok=0
+check "keeps pairing browser alive during transient empty target" "$ok"
+
 stop_supervisor
 
 wait_for_launch_count() {

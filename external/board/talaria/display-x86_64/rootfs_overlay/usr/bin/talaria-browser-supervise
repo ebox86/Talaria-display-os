@@ -289,7 +289,16 @@ while true; do
   [ -f "$mode_state" ] && . "$mode_state"
 
   case "$EFFECTIVE_MODE" in
-    dashboard|signage|pairing) desired_target="$DISPLAY_URL" ;;
+    dashboard|signage|pairing)
+      # Resolver updates are meant to be atomic, but keep the current
+      # rendered target alive if a browser-capable mode is ever observed
+      # without its URL. Explicit diagnostics still stops the browser below.
+      if [ -n "$DISPLAY_URL" ]; then
+        desired_target="$DISPLAY_URL"
+      else
+        desired_target="$current_target"
+      fi
+      ;;
     *) desired_target="" ;;
   esac
 
