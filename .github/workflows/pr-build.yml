@@ -68,28 +68,19 @@ jobs:
             ${{ runner.os }}-buildroot-${{ steps.buildroot.outputs.version }}-
             ${{ runner.os }}-buildroot-
 
-      # Covers host toolchain AND target package build state (including
-      # output/build/wpewebkit-*, by far the slowest thing this repo
-      # builds at ~3+ hours from cold). Keyed by run_id so every run
-      # saves a fresh cache entry rather than trying to exact-match a
-      # key that would invalidate on every defconfig edit - restore-keys
-      # falls back to the most recent prior entry regardless of exact
-      # key, so iterating on the defconfig (which this repo is actively
-      # doing right now) doesn't force WPEWebKit to rebuild from zero
-      # every single time. Buildroot's own per-package stamp/hash
-      # tracking is what decides whether a changed config actually
-      # requires rebuilding a given package - this cache only needs to
-      # preserve enough prior state for Buildroot to make that call
-      # itself, not to be exactly right about what changed.
-      - name: Cache Buildroot build state
-        uses: actions/cache@v5
+      # Covers host toolchain AND target package build state. Restore
+      # and save are explicit instead of using actions/cache's post-job
+      # save path: if Buildroot runs into the job timeout, post-job cache
+      # save is skipped and we lose hours of partial compile work.
+      - name: Restore Buildroot build state
+        uses: actions/cache/restore@v5
         with:
           path: |
             output/host
             output/build
             output/target
             output/staging
-          key: ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-${{ github.run_id }}
+          key: ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-
 
@@ -100,12 +91,35 @@ jobs:
         run: ./scripts/bootstrap-buildroot.sh
 
       - name: Build image
+        id: build_image
+        timeout-minutes: 330
+        continue-on-error: true
         run: ./scripts/build.sh
 
+      - name: Save Buildroot build state
+        if: always() && !cancelled()
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            output/host
+            output/build
+            output/target
+            output/staging
+          key: ${{ runner.os }}-buildroot-build-${{ steps.buildroot.outputs.version }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Check image build result
+        if: steps.build_image.outcome != 'success'
+        shell: bash
+        run: |
+          echo "Build image did not complete successfully; saved partial Buildroot state for the next run." >&2
+          exit 1
+
       - name: Package test artifacts
+        if: steps.build_image.outcome == 'success'
         run: ./scripts/package-artifacts.sh
 
       - name: QEMU smoke test
+        if: steps.build_image.outcome == 'success'
         run: ./scripts/qemu-smoke-test.sh
 
       - name: Upload image artifacts
