@@ -9,6 +9,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 resolver="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/bin/talaria-resolve-mode"
 pairing_url="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/bin/talaria-pairing-url"
+pairing_screen_source_dir="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/share/talaria/screens"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
@@ -44,6 +45,8 @@ run_case() {
     TALARIA_MODE_STATE="$mode_state" \
     TALARIA_PAIRING_URL_CMD="$pairing_url" \
     TALARIA_PAIRING_CODE_FILE="$work_dir/$name.pairing-code" \
+    TALARIA_PAIRING_SCREEN_SOURCE_DIR="$pairing_screen_source_dir" \
+    TALARIA_PAIRING_SCREEN_DIR="$work_dir/$name.screens" \
     TALARIA_FETCH_CMD="$fetch_cmd" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   else
@@ -53,6 +56,8 @@ run_case() {
     TALARIA_MODE_STATE="$mode_state" \
     TALARIA_PAIRING_URL_CMD="$pairing_url" \
     TALARIA_PAIRING_CODE_FILE="$work_dir/$name.pairing-code" \
+    TALARIA_PAIRING_SCREEN_SOURCE_DIR="$pairing_screen_source_dir" \
+    TALARIA_PAIRING_SCREEN_DIR="$work_dir/$name.screens" \
       sh "$resolver" >/dev/null 2>&1 || resolver_status=$?
   fi
 
@@ -70,14 +75,14 @@ run_case() {
 
   # The browser supervisor's contract: DISPLAY_URL in mode-state.conf must
   # be empty whenever the effective mode is diagnostics or fallback fired,
-  # and non-empty whenever it's a genuinely resolved dashboard/signage mode.
+  # and non-empty whenever it's a browser-capable mode.
   # shellcheck disable=SC1090
   . "$mode_state" 2>/dev/null || ok=0
   [[ "${EFFECTIVE_MODE:-}" == "$expect_mode" ]] || ok=0
   if [[ "$expect_mode" == "diagnostics" || "$expect_fallback" == "yes" ]]; then
     [[ -z "${DISPLAY_URL:-}" ]] || ok=0
   elif [[ "$expect_mode" == "pairing" ]]; then
-    [[ "${DISPLAY_URL:-}" == data:text/html* ]] || ok=0
+    [[ "${DISPLAY_URL:-}" == file://"$work_dir"/"$name".screens/pairing.html* ]] || ok=0
   else
     [[ "${DISPLAY_URL:-}" == http* ]] || ok=0
   fi
@@ -223,6 +228,8 @@ TALARIA_STATE_LOG="$stable_pairing_log" \
 TALARIA_MODE_STATE="$stable_pairing_state" \
 TALARIA_PAIRING_URL_CMD="$pairing_url" \
 TALARIA_PAIRING_CODE_FILE="$work_dir/stable-pairing-code" \
+TALARIA_PAIRING_SCREEN_SOURCE_DIR="$pairing_screen_source_dir" \
+TALARIA_PAIRING_SCREEN_DIR="$work_dir/stable-pairing.screens" \
   sh "$resolver" >/dev/null 2>&1 || ok=0
 # shellcheck disable=SC1090
 . "$stable_pairing_state" 2>/dev/null || ok=0
@@ -233,6 +240,8 @@ TALARIA_STATE_LOG="$stable_pairing_log" \
 TALARIA_MODE_STATE="$stable_pairing_state" \
 TALARIA_PAIRING_URL_CMD="$pairing_url" \
 TALARIA_PAIRING_CODE_FILE="$work_dir/stable-pairing-code" \
+TALARIA_PAIRING_SCREEN_SOURCE_DIR="$pairing_screen_source_dir" \
+TALARIA_PAIRING_SCREEN_DIR="$work_dir/stable-pairing.screens" \
   sh "$resolver" >/dev/null 2>&1 || ok=0
 # shellcheck disable=SC1090
 . "$stable_pairing_state" 2>/dev/null || ok=0

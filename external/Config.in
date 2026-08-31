@@ -1,5 +1,7 @@
 menu "Talaria Display OS"
 
+source "$BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH/package/plymouth/Config.in"
+
 config BR2_PACKAGE_TALARIA_DISPLAY_OS_NOTES
 	bool "Talaria display OS project notes"
 	help

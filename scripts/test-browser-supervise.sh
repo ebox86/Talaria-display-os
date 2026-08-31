@@ -192,12 +192,12 @@ check "restarts browser when the target URL changes" "$ok"
 
 stop_supervisor
 
-# --- Scenario 3b: pairing mode launches the local pairing data URL ---
-write_state "pairing" "data:text/html;base64,PGh0bWw+PC9odG1sPgo="
+# --- Scenario 3b: pairing mode launches the local pairing page ---
+write_state "pairing" "file:///run/talaria/screens/pairing.html?code=A7K4-92B1"
 start_supervisor
 ok=1
 wait_for "$work_dir/console.log" 'TALARIA_BROWSER_LAUNCH url=local-pairing' || ok=0
-wait_for "$work_dir/fake-browser.log" 'args: --platform=drm data:text/html;base64,PGh0bWw+PC9odG1sPgo=' || ok=0
+wait_for "$work_dir/fake-browser.log" 'args: --platform=drm file:///run/talaria/screens/pairing.html?code=A7K4-92B1' || ok=0
 check "launches local pairing page in pairing mode" "$ok"
 
 # --- Scenario 3c: a transient empty URL in a browser-capable mode does

@@ -84,7 +84,7 @@ With that shape, an unassigned server can leave the display on the local pairing
 | `pairing` | Local browser page with a pairing code and device details for tenant Workbench claiming. | no | no | Display OS itself |
 | `diagnostics` | Local status and recovery screen. Also the automatic fallback target for every other mode. | no | no | Display OS itself |
 
-`dashboard`, `signage`, and `pairing` all use the same supervised kiosk browser. `dashboard` and `signage` load server-assigned URLs; `pairing` loads a generated local `data:text/html;base64,...` page from `usr/bin/talaria-pairing-url`, avoiding DNS, a local web server, and local file MIME behavior. The pairing page deliberately does not use a browser-side meta refresh; the resolver/supervisor update it only when mode state changes, because WebKit can turn a refreshed data URL into a visible "Frame load interrupted" error page. The resolver writes `mode-state.conf` through a same-directory temp file and atomic rename so the browser supervisor never sources a half-written `DISPLAY_URL`.
+`dashboard`, `signage`, and `pairing` all use the same supervised kiosk browser. `dashboard` and `signage` load server-assigned URLs; `pairing` stages the local design-handoff page into `/run/talaria/screens`, writes current runtime fields beside it as `pairing.json`, and launches `file:///run/talaria/screens/pairing.html?...`. This avoids DNS and a local web server while keeping the browser target stable across resolver polls. The pairing page deliberately does not use a browser-side meta refresh; the page polls the sibling JSON for QR/code/status updates in place, because WebKit can turn full document refreshes into a visible "Frame load interrupted" error page. The resolver writes `mode-state.conf` through a same-directory temp file and atomic rename so the browser supervisor never sources a half-written `DISPLAY_URL`.
 
 `diagnostics` is the odd one out: it is rendered locally, requires nothing from the network or the server, and must always be reachable even if `/data` failed to mount, DHCP never came up, or the config file is empty or corrupt. The Phase 1 framebuffer splash (`usr/bin/talaria-splash`) shows the baked Talaria PNG when framebuffer rendering is available, with console text fallback when it is not. A later phase can replace it with a richer local renderer without changing the contract: diagnostics never depends on external content.
 
@@ -111,7 +111,7 @@ Resolution logic, in order (each retry cycle, from scratch):
 4. If assignment fetch fails, continue with the local config values. This keeps a temporarily unreachable server from wiping out a direct local override, while fresh devices still remain in local pairing by default.
 5. If `TALARIA_DISPLAY_MODE` is not one of `dashboard`, `signage`, `pairing`, `diagnostics` — fall back to `diagnostics`.
 6. If the resolved mode is `dashboard` or `signage` and `TALARIA_DISPLAY_URL` is unset or not a well-formed `http(s)://` URL — fall back to `diagnostics`.
-7. If the resolved mode is `pairing`, generate the local pairing-page data URL and hand that to the browser supervisor.
+7. If the resolved mode is `pairing`, stage the local pairing page plus dynamic `pairing.json` and hand the local file URL to the browser supervisor.
 8. Otherwise, resolve to the configured mode and hand it to the browser supervisor via the state file below. Do not block browser launch on ICMP reachability: real web hosts often drop ping while HTTP still works, and the browser/control plane are the right layers to report load failures.
 
 This keeps `diagnostics` as both a first-class mode an operator can pin a device to, and the automatic result of every failure path above. Each resolution — success or fallback — is appended to `/data/talaria/display-mode.log` and echoed to the console as `TALARIA_MODE_RESOLVED mode=<mode> url=<url>` or `TALARIA_MODE_FALLBACK reason="<reason>" configured_mode=<mode>`, which `scripts/qemu-smoke-test.sh` checks for.
@@ -131,7 +131,7 @@ ASSIGNMENT_REFRESH_SECONDS="15"
 RESOLVED_AT="Fri Aug 14 02:00:00 EDT 2026"
 ```
 
-`DISPLAY_URL` is always empty whenever `EFFECTIVE_MODE` is `diagnostics` or a fallback fired, even if a URL happens to be configured. In `pairing`, `DISPLAY_URL` is the generated local data URL. The supervisor never has to re-derive "should I actually trust this URL," it just checks whether one is present.
+`DISPLAY_URL` is always empty whenever `EFFECTIVE_MODE` is `diagnostics` or a fallback fired, even if a URL happens to be configured. In `pairing`, `DISPLAY_URL` is the generated local `file:///run/talaria/screens/pairing.html?...` URL. The supervisor never has to re-derive "should I actually trust this URL," it just checks whether one is present.
 
 ## Fallback Behavior
 
@@ -184,7 +184,7 @@ A server-assigned mode should follow the same fallback rules as a locally config
 - `EFFECTIVE_MODE` is `diagnostics` (explicit or fallback) -> stop the browser if one is running. Diagnostics itself stays the local splash from `S70`/`talaria-resolve-mode`, not a browser page — see [Diagnostics stays local](#diagnostics-stays-local) below.
 - The running browser process disappears unexpectedly → logged as `TALARIA_BROWSER_CRASHED` and relaunched against the same target, subject to the backoff below.
 
-Console markers: `TALARIA_BROWSER_LAUNCH url=<url> pid=<pid>`, `TALARIA_BROWSER_STOPPED mode=<mode>`, `TALARIA_BROWSER_CRASHED target=<url>`. For the generated pairing data URL, console markers use `url=local-pairing` so the TTY is not flooded with base64. Crash detection deliberately does not use `kill -0` on the browser's pid — a child that exited but hasn't been reaped is a zombie, and `kill -0` on a zombie still succeeds. Each browser is launched inside a small monitor subshell that `wait`s on its own child (the only process allowed to reap it) and drops an exit-marker file when it's gone; the supervisor checks that marker instead.
+Console markers: `TALARIA_BROWSER_LAUNCH url=<url> pid=<pid>`, `TALARIA_BROWSER_STOPPED mode=<mode>`, `TALARIA_BROWSER_CRASHED target=<url>`. For the generated pairing file URL, console markers use `url=local-pairing` so the TTY is not flooded with runtime fields. Crash detection deliberately does not use `kill -0` on the browser's pid — a child that exited but hasn't been reaped is a zombie, and `kill -0` on a zombie still succeeds. Each browser is launched inside a small monitor subshell that `wait`s on its own child (the only process allowed to reap it) and drops an exit-marker file when it's gone; the supervisor checks that marker instead.
 
 The supervisor also claims `/run/talaria/browser-supervise.lock` before launching anything. A duplicate supervisor exits with `TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING` instead of launching a second browser stack against the same display. `S80talaria-browser stop/restart` kills the supervisor pid, the recorded browser pid, and any orphaned `cog` process before a fresh start, because two KMS owners fighting for the same output can produce `failed to schedule a page flip: Permission denied` and crash the renderer.
 

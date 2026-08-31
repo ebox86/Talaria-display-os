@@ -1,0 +1,26 @@
+config BR2_PACKAGE_PLYMOUTH
+	bool "plymouth"
+	depends on BR2_USE_MMU
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_LIBEVDEV
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_LIBXKBCOMMON
+	select BR2_PACKAGE_XKEYBOARD_CONFIG
+	help
+	  Plymouth provides a graphical boot splash and boot-time status
+	  messaging. The Talaria image uses it with the script theme,
+	  DRM/KMS renderer, and the baked Talaria theme assets.
+
+	  https://www.freedesktop.org/wiki/Software/Plymouth/
+
+comment "plymouth needs udev /dev management"
+	depends on BR2_USE_MMU
+	depends on !BR2_PACKAGE_HAS_UDEV
+
+comment "plymouth needs a toolchain w/ threads, dynamic library"
+	depends on BR2_USE_MMU
+	depends on !BR2_TOOLCHAIN_HAS_THREADS || BR2_STATIC_LIBS

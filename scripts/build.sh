@@ -84,6 +84,10 @@ if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2
   "$repo_root/scripts/verify-browser-packages.sh"
 fi
 
+if grep -q '^BR2_PACKAGE_PLYMOUTH=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  "$repo_root/scripts/verify-plymouth-packages.sh"
+fi
+
 # Same reasoning, one layer down: the video-coverage kernel config
 # fragment's symbols are also best-effort. `linux-configure` runs just
 # the kernel package's own configure step (source fetch + Kconfig
@@ -102,6 +106,10 @@ make -C "$buildroot_dir" O="$output_dir"
 
 if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
   "$repo_root/scripts/verify-browser-runtime-files.sh"
+fi
+
+if grep -q '^BR2_PACKAGE_PLYMOUTH=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  "$repo_root/scripts/verify-plymouth-runtime-files.sh"
 fi
 
 echo "Build complete. Images are under: $output_dir/images"

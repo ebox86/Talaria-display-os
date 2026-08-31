@@ -1,5 +1,2 @@
 # Talaria Display OS external tree.
-#
-# Package .mk files can be included here later if the appliance needs custom
-# Buildroot packages. The first proof of concept uses only board files and a
-# rootfs overlay.
+include $(sort $(wildcard $(BR2_EXTERNAL_TALARIA_DISPLAY_OS_PATH)/package/*/*.mk))

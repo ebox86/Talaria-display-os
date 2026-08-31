@@ -1,0 +1,21 @@
+{
+  "offline": {
+    "heading": "Waiting for the content service",
+    "body": "This display has lost its connection. It will resume on its own as soon as the network returns — no action needed.",
+    "state": "Offline",
+    "retry": 15
+  },
+  "restarting": {
+    "heading": "Restarting the player",
+    "body": "The signage player stopped unexpectedly and is coming back up.",
+    "state": "Recovering",
+    "retry": 8
+  },
+  "error": {
+    "heading": "This display needs attention",
+    "body": "The signage service could not start. Please report the code below to facilities.",
+    "code": "TAL-500",
+    "state": "Needs attention",
+    "retry": 0
+  }
+}

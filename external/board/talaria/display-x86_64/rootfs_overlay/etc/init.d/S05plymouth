@@ -1,0 +1,33 @@
+#!/bin/sh
+
+pid_file="/run/plymouth/pid"
+
+case "$1" in
+  start)
+    command -v plymouthd >/dev/null 2>&1 || exit 0
+    command -v plymouth >/dev/null 2>&1 || exit 0
+    mkdir -p /run/plymouth
+    if [ -f "$pid_file" ]; then
+      pid="$(cat "$pid_file" 2>/dev/null || true)"
+      [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && exit 0
+      rm -f "$pid_file"
+    fi
+    plymouthd --mode=boot --pid-file="$pid_file" --attach-to-session >/dev/null 2>&1 || exit 0
+    plymouth show-splash >/dev/null 2>&1 || true
+    plymouth message --text="Starting Talaria Display OS" >/dev/null 2>&1 || true
+    ;;
+  stop)
+    command -v plymouth >/dev/null 2>&1 || exit 0
+    plymouth quit >/dev/null 2>&1 || true
+    ;;
+  restart|reload)
+    "$0" stop
+    "$0" start
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0

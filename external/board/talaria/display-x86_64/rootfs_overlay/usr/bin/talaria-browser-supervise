@@ -108,6 +108,8 @@ console_status() {
 target_label() {
   case "$1" in
     data:text/html*) echo "local-pairing" ;;
+    file:///run/talaria/screens/pairing.html*) echo "local-pairing" ;;
+    file:///usr/share/talaria/screens/pairing.html*) echo "local-pairing" ;;
     *) echo "$1" ;;
   esac
 }
@@ -228,6 +230,7 @@ start_browser() {
   target="$1"
   cleanup_browser_runtime
   rm -f "$browser_pid_file" "$exit_marker"
+  run_splash hide "Launching browser"
   (
     {
       echo

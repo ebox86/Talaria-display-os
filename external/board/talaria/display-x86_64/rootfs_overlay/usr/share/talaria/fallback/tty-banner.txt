@@ -1,0 +1,12 @@
+
+        ___________________
+       /                  /
+      /__________        /        T A L A R I A
+       ________ /       /
+        /              /          Display services are not running.
+       /______________/           This console is not the signage output.
+
+  Status ......  see: systemctl status talaria-player
+  Logs ........  journalctl -u talaria-player -b --no-pager
+  Recover .....  systemctl restart talaria-player
+  Identify ....  hostnamectl

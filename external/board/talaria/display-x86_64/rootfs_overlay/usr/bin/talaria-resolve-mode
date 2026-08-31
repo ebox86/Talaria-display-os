@@ -22,7 +22,7 @@
 # TALARIA_MODE_STATE is the machine-readable handoff talaria-browser-supervise
 # reads: a shell-sourceable EFFECTIVE_MODE/DISPLAY_URL/FALLBACK_REASON/
 # DEVICE_ID/RESOLVED_AT. DISPLAY_URL is always empty there for diagnostics or
-# fallback, and is a generated local data URL for pairing mode.
+# fallback, and is the generated local file URL for pairing mode.
 
 etc_conf="${TALARIA_ETC_CONF:-/etc/talaria/display.conf}"
 data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
@@ -229,6 +229,7 @@ case "$effective_mode" in
         TALARIA_ASSIGNMENT_URL="$assignment_url" \
         TALARIA_DEVICE_TOKEN="$device_token" \
         TALARIA_PAIRING_CODE="$TALARIA_PAIRING_CODE" \
+        TALARIA_ASSIGNMENT_SOURCE="$assignment_source" \
         TALARIA_ASSIGNMENT_FETCH_STATUS="$assignment_fetch_status" \
         TALARIA_ASSIGNMENT_REFRESH_SECONDS="${assignment_refresh_seconds:-15}" \
           "$pairing_url_cmd"
