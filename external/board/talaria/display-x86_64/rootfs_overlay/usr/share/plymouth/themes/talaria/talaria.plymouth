@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Talaria
+Description=Talaria appliance OS boot splash — three-feather mark, purple/orange
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/talaria
+ScriptFile=/usr/share/plymouth/themes/talaria/talaria.script

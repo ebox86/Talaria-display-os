@@ -1,0 +1,21 @@
+{
+  "title": "Pair this display",
+  "code": "",
+  "subtitle": "Scan with the Talaria app, or enter this code in Talaria Workbench.",
+  "status": "Waiting for assignment",
+  "expiresLabel": "Code refreshes in",
+  "expiresAt": "",
+  "qrCaption": "Point the Talaria app at this code to claim the display.",
+  "qrScheme": "talaria://display/pair",
+  "nonce": "",
+  "deviceId": "unconfigured",
+  "network": "Waiting for network",
+  "ip": "",
+  "displayMode": "Pairing",
+  "server": "Not configured",
+  "poll": "15s",
+  "lastCheck": "Just now",
+  "assignmentSource": "Local config",
+  "version": "Talaria Display OS",
+  "build": ""
+}

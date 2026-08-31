@@ -21,40 +21,52 @@ check() {
   fi
 }
 
-decode_data_url() {
-  local url="$1"
-  printf '%s' "${url#data:text/html;base64,}" | base64 -d
-}
+screen_source_dir="$repo_root/external/board/talaria/display-x86_64/rootfs_overlay/usr/share/talaria/screens"
 
 url="$(
   TALARIA_DEVICE_ID=display-01 \
   TALARIA_PAIRING_CODE=A7K4-92B1 \
   TALARIA_SERVER_BASE_URL=http://talaria.local:17444 \
+  TALARIA_PAIRING_SCREEN_SOURCE_DIR="$screen_source_dir" \
+  TALARIA_PAIRING_SCREEN_DIR="$work_dir/screens" \
   TALARIA_ASSIGNMENT_FETCH_STATUS=disabled \
+  TALARIA_ASSIGNMENT_SOURCE=local \
   TALARIA_ASSIGNMENT_REFRESH_SECONDS=15 \
     "$pairing_url"
 )"
 
-html="$(decode_data_url "$url")"
 ok=1
-[[ "$url" == data:text/html\;base64,* ]] || ok=0
-grep -q 'A7K4-92B1' <<<"$html" || ok=0
-grep -q 'display-01' <<<"$html" || ok=0
-grep -q 'Ready to pair' <<<"$html" || ok=0
-grep -q 'Assignment Poll' <<<"$html" || ok=0
-grep -q 'http-equiv="refresh"' <<<"$html" && ok=0
-check "renders pairing page without browser-side refresh" "$ok"
+[[ "$url" == file://"$work_dir"/screens/pairing.html* ]] || ok=0
+[[ -f "$work_dir/screens/pairing.html" ]] || ok=0
+[[ -f "$work_dir/screens/pairing.json" ]] || ok=0
+grep -q '"code": "A7K4-92B1"' "$work_dir/screens/pairing.json" || ok=0
+grep -q '"deviceId": "display-01"' "$work_dir/screens/pairing.json" || ok=0
+grep -q '"server": "http://talaria.local:17444"' "$work_dir/screens/pairing.json" || ok=0
+grep -q 'code=A7K4-92B1' <<<"$url" || ok=0
+grep -q 'deviceId=display-01' <<<"$url" || ok=0
+grep -q 'http-equiv="refresh"' "$work_dir/screens/pairing.html" && ok=0
+check "stages handoff pairing page with dynamic fields" "$ok"
+
+ok=1
+grep -q '"qrScheme": "talaria://display/pair"' "$work_dir/screens/pairing.json" || ok=0
+grep -q '"deviceToken": ""' "$work_dir/screens/pairing.json" || ok=0
+grep -q '"nonce": "' "$work_dir/screens/pairing.json" || ok=0
+check "keeps QR payload short-lived and credential-free" "$ok"
 
 blocked_code_path="$work_dir/pairing-code-dir"
 mkdir -p "$blocked_code_path"
 url_one="$(
   TALARIA_DEVICE_ID=display-01 \
   TALARIA_PAIRING_CODE_FILE="$blocked_code_path" \
+  TALARIA_PAIRING_SCREEN_SOURCE_DIR="$screen_source_dir" \
+  TALARIA_PAIRING_SCREEN_DIR="$work_dir/blocked-screens" \
     "$pairing_url"
 )"
 url_two="$(
   TALARIA_DEVICE_ID=display-01 \
   TALARIA_PAIRING_CODE_FILE="$blocked_code_path" \
+  TALARIA_PAIRING_SCREEN_SOURCE_DIR="$screen_source_dir" \
+  TALARIA_PAIRING_SCREEN_DIR="$work_dir/blocked-screens" \
     "$pairing_url"
 )"
 ok=1

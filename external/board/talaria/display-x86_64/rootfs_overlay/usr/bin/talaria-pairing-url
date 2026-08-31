@@ -1,14 +1,40 @@
 #!/bin/sh
 
 pairing_code_file="${TALARIA_PAIRING_CODE_FILE:-/data/talaria/pairing-code}"
+pairing_nonce_file="${TALARIA_PAIRING_NONCE_FILE:-${pairing_code_file}.nonce}"
+screen_source_dir="${TALARIA_PAIRING_SCREEN_SOURCE_DIR:-/usr/share/talaria/screens}"
+screen_run_dir="${TALARIA_PAIRING_SCREEN_DIR:-/run/talaria/screens}"
 device_id="${TALARIA_DEVICE_ID:-unconfigured}"
 server_base_url="${TALARIA_SERVER_BASE_URL:-}"
 assignment_url="${TALARIA_ASSIGNMENT_URL:-}"
 assignment_status="${TALARIA_ASSIGNMENT_FETCH_STATUS:-disabled}"
 refresh_seconds="${TALARIA_ASSIGNMENT_REFRESH_SECONDS:-15}"
+script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
 
-html_escape() {
-  printf '%s' "$1" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g; s/"/\&quot;/g'
+if [ ! -r "$screen_source_dir/pairing.html" ] && [ -n "$script_dir" ]; then
+  host_overlay_source="${script_dir%/usr/bin}/usr/share/talaria/screens"
+  if [ -r "$host_overlay_source/pairing.html" ]; then
+    screen_source_dir="$host_overlay_source"
+  fi
+fi
+
+json_escape() {
+  printf '%s' "$1" | tr '\r\n' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g; s/	/\\t/g'
+}
+
+query_escape() {
+  printf '%s' "$1" | sed \
+    -e 's/%/%25/g' \
+    -e 's/ /%20/g' \
+    -e 's/:/%3A/g' \
+    -e 's/\//%2F/g' \
+    -e 's/?/%3F/g' \
+    -e 's/&/%26/g' \
+    -e 's/=/%3D/g' \
+    -e 's/#/%23/g' \
+    -e 's/+/%2B/g' \
+    -e 's/"/%22/g' \
+    -e "s/'/%27/g"
 }
 
 make_pairing_code() {
@@ -36,237 +62,151 @@ make_pairing_code() {
   if [ -n "$raw" ]; then
     code="$(awk -v n="$raw" 'BEGIN { printf "%08d", n % 100000000 }')"
     code="${code%????}-${code#????}"
-    if [ ! -d "$pairing_code_file" ] && printf '%s\n' "$code" > "$pairing_code_file" 2>/dev/null; then
+    if [ ! -d "$pairing_code_file" ] && { printf '%s\n' "$code" > "$pairing_code_file"; } 2>/dev/null; then
       printf '%s\n' "$code"
       return 0
     fi
   fi
 
   # If /data is unavailable, keep the code stable for this boot so the
-  # resolver does not hand the browser a different data URL every cycle.
+  # resolver does not hand the browser a different URL every cycle.
   seed="$device_id $(cat /proc/sys/kernel/random/boot_id 2>/dev/null) $(cat /sys/class/net/*/address 2>/dev/null)"
   raw="$(printf '%s' "$seed" | cksum | awk '{print $1}')"
   code="$(awk -v n="$raw" 'BEGIN { printf "%08d", n % 100000000 }')"
   code="${code%????}-${code#????}"
 
   if [ ! -d "$pairing_code_file" ]; then
-    printf '%s\n' "$code" > "$pairing_code_file" 2>/dev/null || true
+    { printf '%s\n' "$code" > "$pairing_code_file"; } 2>/dev/null || true
   fi
   printf '%s\n' "$code"
 }
 
-pairing_code="$(make_pairing_code)"
-device_label="$(html_escape "$device_id")"
-pairing_label="$(html_escape "$pairing_code")"
-server_label="$(html_escape "${server_base_url:-${assignment_url:-Not configured}}")"
-status_label="$(html_escape "$assignment_status")"
-refresh_label="$(html_escape "$refresh_seconds")"
+make_nonce() {
+  local nonce raw nonce_dir seed
 
-tmp_file="${TMPDIR:-/tmp}/talaria-pairing-page.$$"
-trap 'rm -f "$tmp_file"' EXIT INT TERM
+  if [ -n "${TALARIA_PAIRING_NONCE:-}" ]; then
+    printf '%s\n' "$TALARIA_PAIRING_NONCE"
+    return 0
+  fi
 
-cat > "$tmp_file" <<EOF
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Talaria Pairing</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #071211;
-      --panel: #0f1827;
-      --ink: #f8fafc;
-      --muted: #a8b3c7;
-      --teal: #0f766e;
-      --cyan: #38bdf8;
-      --gold: #facc15;
-      --line: rgba(248, 250, 252, 0.16);
-    }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body {
-      align-items: center;
-      background:
-        linear-gradient(180deg, rgba(15, 118, 110, 0.55), rgba(7, 18, 17, 0.92)),
-        var(--bg);
-      color: var(--ink);
-      display: flex;
-      font-family: Arial, Helvetica, sans-serif;
-      justify-content: center;
-      overflow: hidden;
-    }
-    main {
-      display: grid;
-      gap: 32px;
-      max-width: 1180px;
-      padding: 56px;
-      width: 88vw;
-    }
-    .brand {
-      align-items: center;
-      display: flex;
-      gap: 22px;
-    }
-    .mark {
-      background: var(--gold);
-      height: 18px;
-      width: 96px;
-    }
-    .name {
-      font-size: 54px;
-      font-weight: 800;
-      line-height: 1;
-    }
-    .panel {
-      background: var(--panel);
-      border: 12px solid var(--gold);
-      display: grid;
-      gap: 34px;
-      grid-template-columns: minmax(0, 1.2fr) minmax(310px, 0.8fr);
-      padding: 52px;
-    }
-    .eyebrow {
-      color: var(--cyan);
-      font-size: 22px;
-      font-weight: 700;
-      margin: 0 0 14px;
-      text-transform: uppercase;
-    }
-    h1 {
-      font-size: 64px;
-      line-height: 1;
-      margin: 0 0 24px;
-    }
-    p {
-      color: var(--muted);
-      font-size: 27px;
-      line-height: 1.32;
-      margin: 0;
-    }
-    .code {
-      color: var(--ink);
-      font-size: 76px;
-      font-weight: 800;
-      line-height: 1;
-      margin-top: 28px;
-      white-space: nowrap;
-    }
-    .meta {
-      border-left: 1px solid var(--line);
-      display: grid;
-      gap: 22px;
-      padding-left: 34px;
-    }
-    .row {
-      display: grid;
-      gap: 7px;
-    }
-    .label {
-      color: var(--muted);
-      font-size: 18px;
-      text-transform: uppercase;
-    }
-    .value {
-      color: var(--ink);
-      font-size: 24px;
-      overflow-wrap: anywhere;
-    }
-    .pulse {
-      align-items: center;
-      display: flex;
-      gap: 14px;
-      margin-top: 8px;
-    }
-    .dot {
-      animation: pulse 1.4s ease-in-out infinite;
-      background: var(--cyan);
-      height: 16px;
-      width: 16px;
-    }
-    .bar {
-      background: rgba(56, 189, 248, 0.16);
-      height: 10px;
-      overflow: hidden;
-      position: relative;
-      width: 240px;
-    }
-    .bar::after {
-      animation: scan 2.8s linear infinite;
-      background: var(--cyan);
-      content: "";
-      height: 100%;
-      left: -80px;
-      position: absolute;
-      top: 0;
-      width: 80px;
-    }
-    @keyframes pulse {
-      0%, 100% { opacity: 0.35; transform: scale(0.85); }
-      50% { opacity: 1; transform: scale(1); }
-    }
-    @keyframes scan {
-      from { transform: translateX(0); }
-      to { transform: translateX(320px); }
-    }
-    @media (max-width: 860px) {
-      main { padding: 28px; width: 100vw; }
-      .panel { grid-template-columns: 1fr; padding: 34px; }
-      .meta { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; padding-top: 28px; }
-      h1 { font-size: 44px; }
-      p { font-size: 22px; }
-      .code { font-size: 52px; }
-      .name { font-size: 38px; }
-    }
-  </style>
-</head>
-<body>
-  <main>
-    <div class="brand">
-      <div class="mark"></div>
-      <div class="name">TALARIA</div>
-    </div>
-    <section class="panel" aria-label="Display pairing">
-      <div>
-        <p class="eyebrow">Ready to pair</p>
-        <h1>Connect this display in Workbench</h1>
-        <p>Enter this code from the tenant Workbench display setup screen.</p>
-        <div class="code">$pairing_label</div>
-        <div class="pulse">
-          <div class="dot"></div>
-          <div class="bar"></div>
-        </div>
-      </div>
-      <div class="meta">
-        <div class="row">
-          <div class="label">Device ID</div>
-          <div class="value">$device_label</div>
-        </div>
-        <div class="row">
-          <div class="label">Control Plane</div>
-          <div class="value">$server_label</div>
-        </div>
-        <div class="row">
-          <div class="label">Assignment</div>
-          <div class="value">$status_label</div>
-        </div>
-        <div class="row">
-          <div class="label">Assignment Poll</div>
-          <div class="value">${refresh_label}s</div>
-        </div>
-      </div>
-    </section>
-  </main>
-</body>
-</html>
+  if [ -r "$pairing_nonce_file" ]; then
+    nonce="$(head -n 1 "$pairing_nonce_file" 2>/dev/null || true)"
+    case "$nonce" in
+      *[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-]*|'') ;;
+      *)
+        printf '%s\n' "$nonce"
+        return 0
+        ;;
+    esac
+  fi
+
+  nonce_dir="${pairing_nonce_file%/*}"
+  [ "$nonce_dir" = "$pairing_nonce_file" ] || mkdir -p "$nonce_dir" 2>/dev/null || true
+
+  raw="$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' || true)"
+  if [ -n "$raw" ]; then
+    nonce="$raw"
+  else
+    seed="$device_id $(cat /proc/sys/kernel/random/boot_id 2>/dev/null) $(cat /sys/class/net/*/address 2>/dev/null)"
+    nonce="$(printf '%s' "$seed" | cksum | awk '{print $1}')"
+  fi
+
+  if [ ! -d "$pairing_nonce_file" ]; then
+    { printf '%s\n' "$nonce" > "$pairing_nonce_file"; } 2>/dev/null || true
+  fi
+  printf '%s\n' "$nonce"
+}
+
+first_ipv4() {
+  command -v ip >/dev/null 2>&1 || return 0
+  ip -o -4 addr show scope global 2>/dev/null | awk 'NR == 1 { split($4, a, "/"); print a[1]; exit }'
+}
+
+stage_pairing_screen() {
+  mkdir -p "$screen_run_dir/vendor" 2>/dev/null || return 1
+
+  if [ -r "$screen_source_dir/pairing.html" ]; then
+    cp -f "$screen_source_dir/pairing.html" "$screen_run_dir/pairing.html" 2>/dev/null || return 1
+  else
+    return 1
+  fi
+
+  if [ -d "$screen_source_dir/vendor" ]; then
+    cp -f "$screen_source_dir"/vendor/* "$screen_run_dir/vendor/" 2>/dev/null || true
+  fi
+}
+
+write_pairing_json() {
+  local tmp_json ip network_status server_label token_label status_text
+
+  tmp_json="$screen_run_dir/pairing.json.$$"
+  ip="$(first_ipv4)"
+  if [ -n "$ip" ]; then
+    network_status="Online"
+  else
+    network_status="Waiting for network"
+  fi
+  server_label="${server_base_url:-${assignment_url:-Not configured}}"
+  if [ -n "${TALARIA_DEVICE_TOKEN:-}" ]; then
+    token_label="configured"
+  else
+    token_label=""
+  fi
+  case "$assignment_status" in
+    ok) status_text="Ready for assignment" ;;
+    failed) status_text="Control plane unavailable; retrying" ;;
+    *) status_text="Waiting for assignment" ;;
+  esac
+
+  cat > "$tmp_json" <<EOF
+{
+  "title": "Pair this display",
+  "code": "$(json_escape "$pairing_code")",
+  "subtitle": "Scan with the Talaria app, or enter this code in Talaria Workbench.",
+  "status": "$(json_escape "$status_text")",
+  "expiresLabel": "Code refreshes in",
+  "expiresAt": "",
+  "qrCaption": "Point the Talaria app at this code to claim the display.",
+  "qrScheme": "talaria://display/pair",
+  "nonce": "$(json_escape "$pairing_nonce")",
+  "deviceId": "$(json_escape "$device_id")",
+  "network": "$(json_escape "$network_status")",
+  "ip": "$(json_escape "$ip")",
+  "hardwareTier": "",
+  "displayMode": "Pairing",
+  "server": "$(json_escape "$server_label")",
+  "poll": "$(json_escape "$refresh_seconds")s",
+  "lastCheck": "Just now",
+  "assignmentSource": "$(json_escape "$assignment_source")",
+  "deviceToken": "$(json_escape "$token_label")",
+  "version": "Talaria Display OS",
+  "build": "$(json_escape "${TALARIA_IMAGE_BUILD:-}")"
+}
 EOF
 
-if ! command -v base64 >/dev/null 2>&1; then
-  printf '%s\n' "file:///usr/share/talaria/pairing.html"
+  mv -f "$tmp_json" "$screen_run_dir/pairing.json" 2>/dev/null || {
+    rm -f "$tmp_json"
+    return 1
+  }
+}
+
+pairing_code="$(make_pairing_code)"
+pairing_nonce="$(make_nonce)"
+assignment_source="${TALARIA_ASSIGNMENT_SOURCE:-local}"
+
+if stage_pairing_screen && write_pairing_json; then
+  # The sibling JSON enables in-place updates. The query string gives
+  # WebKit enough fields to render immediately even if local file fetches
+  # are restricted by the backend.
+  printf 'file://%s?code=%s&deviceId=%s&server=%s&poll=%s&assignmentSource=%s\n' \
+    "$screen_run_dir/pairing.html" \
+    "$(query_escape "$pairing_code")" \
+    "$(query_escape "$device_id")" \
+    "$(query_escape "${server_base_url:-${assignment_url:-Not configured}}")" \
+    "$(query_escape "${refresh_seconds}s")" \
+    "$(query_escape "$assignment_source")"
   exit 0
 fi
 
-printf 'data:text/html;base64,'
-base64 < "$tmp_file" | tr -d '\n'
-printf '\n'
+# Last-ditch fallback if /run is unavailable: show the static shipped page.
+printf '%s\n' "file:///usr/share/talaria/screens/pairing.html"

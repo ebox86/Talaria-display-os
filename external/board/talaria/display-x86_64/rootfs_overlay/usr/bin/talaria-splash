@@ -37,6 +37,21 @@ show_image() {
   return 1
 }
 
+plymouth_is_running() {
+  command -v plymouth >/dev/null 2>&1 || return 1
+  [ -S /run/plymouth/socket ] || return 1
+}
+
+plymouth_message() {
+  plymouth_is_running || return 1
+  plymouth message --text="$message" >/dev/null 2>&1
+}
+
+plymouth_quit() {
+  command -v plymouth >/dev/null 2>&1 || return 1
+  plymouth quit >/dev/null 2>&1
+}
+
 write_text_fallback() {
   target="$1"
 
@@ -66,11 +81,13 @@ write_status() {
 
 case "$state" in
   hide)
+    plymouth_quit || true
     for tty in $tty_list; do
       write_tty "$tty" '\033[2J\033[H\033[?25h'
     done
     ;;
   *)
+    plymouth_message && exit 0
     show_image && exit 0
     draw_fallback
     write_status
