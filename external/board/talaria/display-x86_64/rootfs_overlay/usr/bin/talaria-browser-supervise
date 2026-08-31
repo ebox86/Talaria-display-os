@@ -6,10 +6,9 @@
 # restarts, or stops the browser to match it. See
 # docs/display-runtime-design.md#browser-phase.
 #
-# The browser command itself is a plain WPE/Cog invocation against the
-# DRM backend (no X11/Wayland compositor) rendering with Mesa's software
-# GL (llvmpipe) by default, since target hardware GPUs are not yet known
-# — see the Buildroot defconfig comments for that tradeoff.
+# The preferred browser path is Cage as a single-app Wayland compositor
+# running Cog's Wayland platform. Direct Cog DRM remains available as a
+# fallback/debug backend.
 #
 # Crash detection deliberately does not use `kill -0` on the browser's
 # pid: a child that has exited but not yet been reaped is a zombie, and
@@ -28,16 +27,29 @@
 # Environment overrides, mainly for scripts/test-browser-supervise.sh:
 #
 #   TALARIA_MODE_STATE            default /run/talaria/mode-state.conf
+#   TALARIA_BROWSER_BACKEND       default auto (cage when available, else drm)
 #   TALARIA_BROWSER_CMD           default cog
-#   TALARIA_COG_PLATFORM          default drm
+#   TALARIA_CAGE_CMD              default cage
+#   TALARIA_CAGE_ARGS             default -s
+#   TALARIA_COG_PLATFORM          default drm (direct DRM fallback only)
+#   TALARIA_COG_PLATFORM_PARAMS   default empty (direct DRM fallback only)
+#   TALARIA_COG_WL_PLATFORM       default wl
 #   TALARIA_BROWSER_POLL_INTERVAL default 5 (seconds)
 #   TALARIA_BROWSER_MAX_CYCLES    default 0 (0 = run forever)
 #   TALARIA_BROWSER_MAX_CRASHES   default 3 (consecutive crashes before giving-up signal)
-#   TALARIA_BROWSER_STABLE_CYCLES default 3 (consecutive healthy cycles before the crash count resets)
+#   TALARIA_BROWSER_STABLE_CYCLES default 12 (consecutive healthy cycles before the crash count resets)
 #   TALARIA_BROWSER_BACKOFF_BASE  default 5 (seconds; delay before the 1st relaunch attempt after a crash)
 #   TALARIA_BROWSER_BACKOFF_MAX   default 60 (seconds; backoff cap)
+#   TALARIA_BROWSER_GIVEUP_RETRY_DELAY default 300 (seconds; retry delay after visible give-up signal)
+#   TALARIA_BROWSER_CLEANUP_DELAY default 5 (seconds; pause after killing browser stack)
+#   TALARIA_BROWSER_LOG           default /data/talaria/browser.log
 #   TALARIA_BROWSER_RUN_DIR       default /run/talaria
 #   TALARIA_CONSOLE_DEVICE        default /dev/console
+#   TALARIA_XCOMPOSEFILE          default /usr/share/talaria/empty-compose
+#   TALARIA_WLR_DRM_NO_MODIFIERS  default 1 (set empty to leave wlroots default)
+#   TALARIA_WLR_RENDERER          default empty (e.g. pixman for debugging)
+#   TALARIA_MESA_LOADER_DRIVER_OVERRIDE default empty (e.g. llvmpipe/i915/iris/radeonsi)
+#   TALARIA_BROWSER_FORCE_SOFTWARE_GL default 0 (set 1 to export LIBGL_ALWAYS_SOFTWARE=1)
 #
 # Backoff only delays *relaunching the same crashing target* - it never
 # delays noticing a mode/target change. A config fix or a server
@@ -45,26 +57,89 @@
 # previous target is deep in backoff.
 
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
+browser_backend="${TALARIA_BROWSER_BACKEND:-auto}"
 browser_cmd="${TALARIA_BROWSER_CMD:-cog}"
+cage_cmd="${TALARIA_CAGE_CMD:-cage}"
+browser_name="${browser_cmd##*/}"
+cage_name="${cage_cmd##*/}"
+cage_args="${TALARIA_CAGE_ARGS--s}"
 browser_platform="${TALARIA_COG_PLATFORM:-drm}"
+browser_platform_params="${TALARIA_COG_PLATFORM_PARAMS-}"
+cog_wl_platform="${TALARIA_COG_WL_PLATFORM:-wl}"
 poll_interval="${TALARIA_BROWSER_POLL_INTERVAL:-5}"
 max_cycles="${TALARIA_BROWSER_MAX_CYCLES:-0}"
 max_crashes="${TALARIA_BROWSER_MAX_CRASHES:-3}"
-stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-3}"
+stable_cycles="${TALARIA_BROWSER_STABLE_CYCLES:-12}"
 backoff_base="${TALARIA_BROWSER_BACKOFF_BASE:-5}"
 backoff_max="${TALARIA_BROWSER_BACKOFF_MAX:-60}"
+giveup_retry_delay="${TALARIA_BROWSER_GIVEUP_RETRY_DELAY:-300}"
+cleanup_delay="${TALARIA_BROWSER_CLEANUP_DELAY:-5}"
+browser_log="${TALARIA_BROWSER_LOG:-/data/talaria/browser.log}"
 run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
+xcompose_file="${TALARIA_XCOMPOSEFILE:-/usr/share/talaria/empty-compose}"
+wlroots_drm_no_modifiers="${TALARIA_WLR_DRM_NO_MODIFIERS:-1}"
+wlroots_renderer="${TALARIA_WLR_RENDERER:-}"
+mesa_loader_driver_override="${TALARIA_MESA_LOADER_DRIVER_OVERRIDE:-}"
+force_software_gl="${TALARIA_BROWSER_FORCE_SOFTWARE_GL:-0}"
+xdg_runtime_dir="$run_dir/xdg-runtime"
+browser_log_dir="${browser_log%/*}"
 
 browser_pid_file="$run_dir/browser.pid"
 exit_marker="$run_dir/browser.exited"
+lock_dir="$run_dir/browser-supervise.lock"
+lock_pid_file="$lock_dir/pid"
 
 mkdir -p "$run_dir" 2>/dev/null
+[ "$browser_log_dir" = "$browser_log" ] || mkdir -p "$browser_log_dir" 2>/dev/null || true
+if ! { : >> "$browser_log"; } 2>/dev/null; then
+  browser_log="$run_dir/browser.log"
+  if ! { : >> "$browser_log"; } 2>/dev/null; then
+    browser_log="/dev/null"
+  fi
+fi
 
 console_status() {
   if [ -w "$console_device" ]; then
     echo "$1" >> "$console_device"
   fi
+}
+
+target_label() {
+  case "$1" in
+    data:text/html*) echo "local-pairing" ;;
+    *) echo "$1" ;;
+  esac
+}
+
+release_supervisor_lock() {
+  rm -f "$lock_pid_file"
+  rmdir "$lock_dir" 2>/dev/null || true
+}
+
+claim_supervisor_lock() {
+  local lock_pid
+
+  if mkdir "$lock_dir" 2>/dev/null; then
+    echo "$$" > "$lock_pid_file"
+    return 0
+  fi
+
+  lock_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+  if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+    console_status "TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING pid=$lock_pid"
+    return 1
+  fi
+
+  rm -f "$lock_pid_file"
+  rmdir "$lock_dir" 2>/dev/null || true
+  if mkdir "$lock_dir" 2>/dev/null; then
+    echo "$$" > "$lock_pid_file"
+    return 0
+  fi
+
+  console_status "TALARIA_BROWSER_SUPERVISOR_ALREADY_RUNNING pid=unknown"
+  return 1
 }
 
 run_splash() {
@@ -73,27 +148,125 @@ run_splash() {
   fi
 }
 
+use_cage_backend() {
+  case "$browser_backend" in
+    cage|wl|wayland)
+      command -v "$cage_cmd" >/dev/null 2>&1
+      ;;
+    drm)
+      return 1
+      ;;
+    auto)
+      command -v "$cage_cmd" >/dev/null 2>&1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 current_pid=""
 current_target=""
 
-stop_browser() {
-  if [ -n "$current_pid" ]; then
-    if [ -f "$browser_pid_file" ]; then
-      kill "$(cat "$browser_pid_file")" 2>/dev/null
+kill_browser_processes() {
+  command -v pidof >/dev/null 2>&1 || return 0
+
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    [ -n "$pid" ] || continue
+    kill "$pid" 2>/dev/null || true
+  done
+  sleep 1
+  for pid in $(pidof "$browser_name" "$cage_name" 2>/dev/null); do
+    [ -n "$pid" ] || continue
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
+  done
+}
+
+cleanup_wayland_runtime() {
+  [ -d "$xdg_runtime_dir" ] || return 0
+  rm -f "$xdg_runtime_dir"/wayland-* "$xdg_runtime_dir"/wayland-*.lock 2>/dev/null || true
+}
+
+cleanup_browser_runtime() {
+  if [ -f "$browser_pid_file" ]; then
+    browser_pid="$(cat "$browser_pid_file" 2>/dev/null || true)"
+    if [ -n "$browser_pid" ]; then
+      kill "$browser_pid" 2>/dev/null || true
     fi
-    kill "$current_pid" 2>/dev/null
-    wait "$current_pid" 2>/dev/null
   fi
+
+  if [ -n "$current_pid" ]; then
+    kill "$current_pid" 2>/dev/null || true
+    wait "$current_pid" 2>/dev/null || true
+  fi
+
+  kill_browser_processes
+  cleanup_wayland_runtime
+  if [ "$cleanup_delay" -gt 0 ] 2>/dev/null; then
+    sleep "$cleanup_delay"
+  fi
+}
+
+stop_browser() {
+  cleanup_browser_runtime
   current_pid=""
   current_target=""
   rm -f "$browser_pid_file" "$exit_marker"
 }
 
+stop_supervisor() {
+  stop_browser
+  release_supervisor_lock
+  exit 0
+}
+
+claim_supervisor_lock || exit 0
+trap stop_supervisor INT TERM
+trap release_supervisor_lock EXIT
+
 start_browser() {
   target="$1"
+  cleanup_browser_runtime
   rm -f "$browser_pid_file" "$exit_marker"
   (
-    "$browser_cmd" --platform="$browser_platform" "$target" &
+    {
+      echo
+      echo "=== Talaria browser launch $(date 2>/dev/null || true) ==="
+      echo "target=$target backend=$browser_backend cage=$cage_cmd cog=$browser_cmd"
+      echo "wlr_renderer=${wlroots_renderer:-default} wlr_drm_no_modifiers=${wlroots_drm_no_modifiers:-default} mesa_driver=${mesa_loader_driver_override:-auto} force_software_gl=$force_software_gl"
+    } >> "$browser_log" 2>&1 || true
+
+    if [ -n "$mesa_loader_driver_override" ]; then
+      export MESA_LOADER_DRIVER_OVERRIDE="$mesa_loader_driver_override"
+    fi
+    if [ "$force_software_gl" = "1" ]; then
+      export LIBGL_ALWAYS_SOFTWARE=1
+    fi
+
+    if use_cage_backend; then
+      mkdir -p "$xdg_runtime_dir" 2>/dev/null
+      chmod 700 "$xdg_runtime_dir" 2>/dev/null || true
+      export XDG_RUNTIME_DIR="$xdg_runtime_dir"
+      export XCOMPOSEFILE="$xcompose_file"
+      export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
+      if [ -n "$wlroots_drm_no_modifiers" ]; then
+        export WLR_DRM_NO_MODIFIERS="$wlroots_drm_no_modifiers"
+      fi
+      if [ -n "$wlroots_renderer" ]; then
+        export WLR_RENDERER="$wlroots_renderer"
+      fi
+      if [ -n "$cage_args" ]; then
+        "$cage_cmd" $cage_args -- "$browser_cmd" --platform="$cog_wl_platform" "$target" >> "$browser_log" 2>&1 &
+      else
+        "$cage_cmd" -- "$browser_cmd" --platform="$cog_wl_platform" "$target" >> "$browser_log" 2>&1 &
+      fi
+    elif [ -n "$browser_platform_params" ]; then
+      export XCOMPOSEFILE="$xcompose_file"
+      "$browser_cmd" --platform="$browser_platform" --platform-params="$browser_platform_params" "$target" >> "$browser_log" 2>&1 &
+    else
+      export XCOMPOSEFILE="$xcompose_file"
+      "$browser_cmd" --platform="$browser_platform" "$target" >> "$browser_log" 2>&1 &
+    fi
     child=$!
     echo "$child" > "$browser_pid_file"
     wait "$child" 2>/dev/null
@@ -101,7 +274,7 @@ start_browser() {
   ) &
   current_pid=$!
   current_target="$target"
-  console_status "TALARIA_BROWSER_LAUNCH url=$target pid=$current_pid"
+  console_status "TALARIA_BROWSER_LAUNCH url=$(target_label "$target") pid=$current_pid"
 }
 
 cycle=0
@@ -116,17 +289,33 @@ while true; do
   [ -f "$mode_state" ] && . "$mode_state"
 
   case "$EFFECTIVE_MODE" in
-    dashboard|signage) desired_target="$DISPLAY_URL" ;;
+    dashboard|signage|pairing)
+      # Resolver updates are meant to be atomic, but keep the current
+      # rendered target alive if a browser-capable mode is ever observed
+      # without its URL. Explicit diagnostics still stops the browser below.
+      if [ -n "$DISPLAY_URL" ]; then
+        desired_target="$DISPLAY_URL"
+      else
+        desired_target="$current_target"
+      fi
+      ;;
+    "")
+      # If the state file is temporarily unreadable or empty, preserve the
+      # active browser until the next clean resolver write lands.
+      desired_target="$current_target"
+      ;;
     *) desired_target="" ;;
   esac
 
   crashed_this_cycle=0
   if [ -n "$current_pid" ] && [ -f "$exit_marker" ]; then
-    console_status "TALARIA_BROWSER_CRASHED target=$current_target"
+    console_status "TALARIA_BROWSER_CRASHED target=$(target_label "$current_target")"
+    cleanup_browser_runtime
     current_pid=""
     crashed_this_cycle=1
     crash_count=$((crash_count + 1))
     healthy_cycles=0
+    rm -f "$browser_pid_file" "$exit_marker"
 
     # delay = backoff_base * 2^(crash_count-1), capped at backoff_max.
     delay="$backoff_base"
@@ -178,8 +367,12 @@ while true; do
   # splash with nothing behind it.
   if [ "$gave_up" -eq 0 ] && [ "$crash_count" -ge "$max_crashes" ]; then
     gave_up=1
-    console_status "TALARIA_BROWSER_GIVING_UP target=$current_target attempts=$crash_count"
-    run_splash diagnostics "Browser unavailable after $crash_count attempts: $current_target"
+    now="$(date +%s 2>/dev/null || echo 0)"
+    if [ "$giveup_retry_delay" -gt 0 ] 2>/dev/null; then
+      backoff_until=$((now + giveup_retry_delay))
+    fi
+    console_status "TALARIA_BROWSER_GIVING_UP target=$(target_label "$current_target") attempts=$crash_count retry_seconds=$giveup_retry_delay"
+    run_splash diagnostics "Browser unavailable after $crash_count attempts: $(target_label "$current_target")"
   fi
 
   cycle=$((cycle + 1))

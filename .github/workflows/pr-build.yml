@@ -32,7 +32,7 @@ jobs:
     # WPEWebKit builds from source; 120m was enough for the Phase 1
     # console-only image but is not enough headroom for that. Revisit
     # once we have real timing data from a successful run.
-    timeout-minutes: 300
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
@@ -41,8 +41,14 @@ jobs:
       - name: Test mode-resolve logic
         run: ./scripts/test-mode-resolve.sh
 
+      - name: Test pairing page generation
+        run: ./scripts/test-pairing-url.sh
+
       - name: Test browser-supervise logic
         run: ./scripts/test-browser-supervise.sh
+
+      - name: Test browser init lifecycle
+        run: ./scripts/test-browser-init.sh
 
       - name: Read Buildroot version
         id: buildroot
@@ -113,7 +119,7 @@ jobs:
             artifacts/qemu-screenshot.png
           compression-level: 0
           retention-days: 7
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Add QEMU screenshot to job summary
         if: always()

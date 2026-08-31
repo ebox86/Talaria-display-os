@@ -10,7 +10,7 @@ Target fleet is deliberately wide: roughly 2004-2014 era x86_64 workstations, wh
 
 Rows above are for units actually in hand and tested. [Researched Candidates](#researched-candidates-not-yet-hands-on-tested) below tracks spec-sheet research on models worth sourcing but not yet tested — promote a candidate to a real row here once a unit is tested.
 
-**GPU Driver Used**: which kernel driver actually bound (`i915`/`radeon`/`nouveau`/`mgag200`/`ast`/`simpledrm`/none) — check with `cat /sys/class/drm/*/device/uevent` or `dmesg | grep -i drm` on the target console.
+**GPU Driver Used**: which kernel driver actually bound (`i915`/`radeon`/`amdgpu`/`nouveau`/`vmwgfx`/`virtio_gpu`/`mgag200`/`ast`/`simpledrm`/none). Check `/data/talaria/hardware-report.log` first; it records `/dev/dri`, PCI IDs, DRM sysfs, loaded modules, and recent graphics kernel messages at boot.
 
 **Video Result**: whether `vga=791` gave a usable framebuffer, whether a browser (once the stack builds) actually renders, or whether the device landed on the `TALARIA_BROWSER_GIVING_UP` visible-failure path (see `docs/display-runtime-design.md#browser-phase`). A device that never gets real video but still boots to a working diagnostics console is a partial pass, not a failure — record it as such.
 
@@ -53,7 +53,7 @@ Old x86/x86_64 thin clients (HP t5xxx, Dell/Wyse) are architecturally the same k
 | HP t5730 | ~2009 | AMD Sempron (K8), 1 GHz | 512 MB | 1 GB (44-pin IDE) | unconfirmed |
 | HP t5740 | ~2009-2010 | Intel Atom N280, 1.66 GHz | 2 GB (8 GB max) | 2-4 GB (44-pin IDE + open SATA slot) | unconfirmed — early Atom 64-bit support is notoriously inconsistent, don't assume it |
 
-The t5730's entire flash (1 GB) is smaller than this image's rootfs partition alone (1536M, sized for WPEWebKit/Mesa/ICU). This isn't a "will it boot" question like the desktop candidates above — it's a "the current image cannot physically fit" question. Supporting this class of hardware for real means a genuinely smaller build variant (fewer packages, smaller rootfs, possibly dropping video drivers this class of hardware won't use), not a config tweak. Treat as future scope, not something today's defconfig should try to also serve.
+The t5730's entire flash (1 GB) is smaller than this image's rootfs partition alone (3072M, sized for WPEWebKit/Mesa/ICU/LLVM and broad Mesa driver coverage). This isn't a "will it boot" question like the desktop candidates above — it's a "the current image cannot physically fit" question. Supporting this class of hardware for real means a genuinely smaller build variant (fewer packages, smaller rootfs, possibly dropping video drivers this class of hardware won't use), not a config tweak. Treat as future scope, not something today's defconfig should try to also serve.
 
 ## Decision Rule
 

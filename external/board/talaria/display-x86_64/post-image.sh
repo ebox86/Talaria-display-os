@@ -14,15 +14,17 @@ if command -v git >/dev/null 2>&1; then
 fi
 
 cat > "$images_dir/talaria-display-os-manifest.txt" <<EOF
-Talaria Display OS phase 1 image artifacts
+Talaria Display OS image artifacts
 Generated: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
 Git commit: $git_commit
 
-Expected first milestone:
+Expected current milestone:
 - boot target x86_64 PC
 - acquire wired DHCP
-- write /data/talaria/phase1.log
-- ping configured TALARIA_SERVER_HOST when set
+- render Talaria PNG diagnostics splash
+- write diagnostics logs under /data/talaria
+- resolve dashboard/signage/pairing/diagnostics mode from local config or server assignment
+- supervise WPE/Cog browser for dashboard/signage/pairing targets
 
 Primary output:
 - disk.img
@@ -31,7 +33,7 @@ Primary output:
 
 Next work:
 - validate on real old hardware
-- add WPE WebKit/Cog after text/network bring-up succeeds
+- implement edge-api/workbench assignment and heartbeat endpoints
 EOF
 
 (

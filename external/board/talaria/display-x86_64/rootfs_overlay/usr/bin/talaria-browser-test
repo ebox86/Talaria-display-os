@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# Manual bring-up helper: point the Cog supervisor at a data: HTML URL
+# so graphics/browser rendering can be tested without DNS, internet,
+# a Talaria server, or local file MIME handling.
+
+run_dir="${TALARIA_BROWSER_RUN_DIR:-/run/talaria}"
+state_file="${TALARIA_MODE_STATE:-$run_dir/mode-state.conf}"
+test_url="${TALARIA_BROWSER_TEST_URL:-data:text/html;base64,PCFkb2N0eXBlIGh0bWw+CjxodG1sPgo8aGVhZD4KICA8bWV0YSBjaGFyc2V0PSJ1dGYtOCI+CiAgPHRpdGxlPlRhbGFyaWEgQnJvd3NlciBUZXN0PC90aXRsZT4KICA8c3R5bGU+CiAgICBodG1sLAogICAgYm9keSB7CiAgICAgIGhlaWdodDogMTAwJTsKICAgICAgbWFyZ2luOiAwOwogICAgfQoKICAgIGJvZHkgewogICAgICBhbGlnbi1pdGVtczogY2VudGVyOwogICAgICBiYWNrZ3JvdW5kOiAjMGY3NjZlOwogICAgICBjb2xvcjogI2Y4ZmFmYzsKICAgICAgZGlzcGxheTogZmxleDsKICAgICAgZm9udC1mYW1pbHk6IHNhbnMtc2VyaWY7CiAgICAgIGp1c3RpZnktY29udGVudDogY2VudGVyOwogICAgfQoKICAgIG1haW4gewogICAgICBiYWNrZ3JvdW5kOiAjMTExODI3OwogICAgICBib3JkZXI6IDEycHggc29saWQgI2ZhY2MxNTsKICAgICAgYm94LXNpemluZzogYm9yZGVyLWJveDsKICAgICAgbWF4LXdpZHRoOiA4MjBweDsKICAgICAgcGFkZGluZzogNDhweDsKICAgICAgd2lkdGg6IDcwdnc7CiAgICB9CgogICAgaDEgewogICAgICBmb250LXNpemU6IDQ4cHg7CiAgICAgIGZvbnQtd2VpZ2h0OiA3MDA7CiAgICAgIGxpbmUtaGVpZ2h0OiAxLjE7CiAgICAgIG1hcmdpbjogMCAwIDE4cHg7CiAgICB9CgogICAgcCB7CiAgICAgIGZvbnQtc2l6ZTogMjRweDsKICAgICAgbGluZS1oZWlnaHQ6IDEuMzU7CiAgICAgIG1hcmdpbjogMDsKICAgIH0KICA8L3N0eWxlPgo8L2hlYWQ+Cjxib2R5PgogIDxtYWluPgogICAgPGgxPlRhbGFyaWEgYnJvd3NlciB0ZXN0PC9oMT4KICAgIDxwPklmIHlvdSBjYW4gcmVhZCB0aGlzLCBDb2csIERSTS9LTVMsIFdlYktpdCwgQ1NTLCBhbmQgZm9udHMgYXJlIHJlbmRlcmluZy48L3A+CiAgPC9tYWluPgo8L2JvZHk+CjwvaHRtbD4K}"
+
+/etc/init.d/S70talaria-mode-resolve stop 2>/dev/null || true
+
+mkdir -p "$run_dir"
+{
+  echo "EFFECTIVE_MODE=dashboard"
+  echo "DISPLAY_URL='$test_url'"
+  echo 'FALLBACK_REASON=""'
+  echo "DEVICE_ID=browser-test"
+  echo "RESOLVED_AT=\"$(date)\""
+} > "$state_file"
+
+/etc/init.d/S80talaria-browser restart
+echo "Started Talaria browser test"

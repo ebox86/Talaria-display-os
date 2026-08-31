@@ -1,0 +1,15 @@
+#!/bin/sh
+
+case "$1" in
+  start|restart|reload)
+    /usr/bin/talaria-hardware-report || true
+    ;;
+  stop)
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload}"
+    exit 1
+    ;;
+esac
+
+exit 0

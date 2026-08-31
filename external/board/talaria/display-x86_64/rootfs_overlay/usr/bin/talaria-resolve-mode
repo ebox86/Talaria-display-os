@@ -8,28 +8,28 @@
 # retry loop so a corrected /data/talaria/display.conf recovers without a
 # reboot.
 #
-# Paths and the reachability probe are overridable via environment
-# variables so this can be exercised outside the target rootfs, e.g. by
-# scripts/test-mode-resolve.sh:
+# Paths are overridable via environment variables so this can be
+# exercised outside the target rootfs, e.g. by scripts/test-mode-resolve.sh:
 #
 #   TALARIA_ETC_CONF       default /etc/talaria/display.conf
 #   TALARIA_DATA_CONF      default /data/talaria/display.conf
 #   TALARIA_STATE_LOG      default /data/talaria/display-mode.log
 #   TALARIA_MODE_STATE     default /run/talaria/mode-state.conf
-#   TALARIA_PING_CMD       default "ping -c 1 -W 2"
+#   TALARIA_FETCH_CMD      default "wget -q -O -"
+#   TALARIA_PAIRING_URL_CMD default "talaria-pairing-url"
 #   TALARIA_CONSOLE_DEVICE default /dev/console
 #
 # TALARIA_MODE_STATE is the machine-readable handoff talaria-browser-supervise
 # reads: a shell-sourceable EFFECTIVE_MODE/DISPLAY_URL/FALLBACK_REASON/
 # DEVICE_ID/RESOLVED_AT. DISPLAY_URL is always empty there for diagnostics or
-# fallback, so the browser supervisor never has to re-derive the fallback
-# rules itself.
+# fallback, and is a generated local data URL for pairing mode.
 
 etc_conf="${TALARIA_ETC_CONF:-/etc/talaria/display.conf}"
 data_conf="${TALARIA_DATA_CONF:-/data/talaria/display.conf}"
 state_log="${TALARIA_STATE_LOG:-/data/talaria/display-mode.log}"
 mode_state="${TALARIA_MODE_STATE:-/run/talaria/mode-state.conf}"
-ping_cmd="${TALARIA_PING_CMD:-ping -c 1 -W 2}"
+fetch_cmd="${TALARIA_FETCH_CMD:-wget -q -O -}"
+pairing_url_cmd="${TALARIA_PAIRING_URL_CMD:-talaria-pairing-url}"
 console_device="${TALARIA_CONSOLE_DEVICE:-/dev/console}"
 
 console_status() {
@@ -46,7 +46,7 @@ run_splash() {
 
 is_valid_mode() {
   case "$1" in
-    dashboard|signage|diagnostics) return 0 ;;
+    dashboard|signage|pairing|diagnostics) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -58,20 +58,152 @@ is_http_url() {
   esac
 }
 
+quote_state_value() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\$/\\$/g; s/`/\\`/g'
+}
+
+write_mode_state() {
+  state_dir="$(dirname "$mode_state")"
+  tmp_state="${mode_state}.$$"
+
+  mkdir -p "$state_dir" 2>/dev/null
+  {
+    echo "EFFECTIVE_MODE=\"$(quote_state_value "$effective_mode")\""
+    echo "DISPLAY_URL=\"$(quote_state_value "$state_url")\""
+    echo "FALLBACK_REASON=\"$(quote_state_value "$reason")\""
+    echo "DEVICE_ID=\"$(quote_state_value "$device_id")\""
+    echo "ASSIGNMENT_SOURCE=\"$(quote_state_value "$assignment_source")\""
+    echo "ASSIGNMENT_FETCH_STATUS=\"$(quote_state_value "$assignment_fetch_status")\""
+    echo "ASSIGNMENT_REFRESH_SECONDS=\"$(quote_state_value "$assignment_refresh_seconds")\""
+    echo "RESOLVED_AT=\"$(date)\""
+  } > "$tmp_state" 2>/dev/null || {
+    rm -f "$tmp_state"
+    return 1
+  }
+
+  mv -f "$tmp_state" "$mode_state" 2>/dev/null || {
+    rm -f "$tmp_state"
+    return 1
+  }
+}
+
+strip_assignment_value() {
+  value="$1"
+  case "$value" in
+    \"*\")
+      value="${value#\"}"
+      value="${value%\"}"
+      ;;
+  esac
+  printf '%s' "$value"
+}
+
+normalize_refresh_seconds() {
+  candidate="$1"
+  case "$candidate" in
+    ''|*[!0-9]*) return 0 ;;
+    *)
+      if [ "$candidate" -lt 5 ]; then
+        echo 5
+      elif [ "$candidate" -gt 3600 ]; then
+        echo 3600
+      else
+        echo "$candidate"
+      fi
+      ;;
+  esac
+}
+
+is_url_query_value_safe() {
+  case "$1" in
+    ''|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+fetch_server_assignment() {
+  [ -n "$assignment_url" ] || return 2
+  [ "$device_id" != "unconfigured" ] || return 2
+  is_http_url "$assignment_url" || return 2
+  is_url_query_value_safe "$device_id" || return 2
+  if [ -n "$device_token" ]; then
+    is_url_query_value_safe "$device_token" || return 2
+  fi
+
+  tmp_file="${mode_state}.assignment.$$"
+  sep="?"
+  case "$assignment_url" in
+    *\?*) sep="&" ;;
+  esac
+  request_url="${assignment_url}${sep}deviceId=${device_id}"
+  if [ -n "$device_token" ]; then
+    request_url="${request_url}&deviceToken=${device_token}"
+  fi
+
+  if ! $fetch_cmd "$request_url" > "$tmp_file" 2>/dev/null; then
+    rm -f "$tmp_file"
+    return 1
+  fi
+
+  while IFS= read -r line; do
+    case "$line" in
+      TALARIA_DISPLAY_MODE=*)
+        configured_mode="$(strip_assignment_value "${line#TALARIA_DISPLAY_MODE=}")"
+        ;;
+      TALARIA_DISPLAY_URL=*)
+        display_url="$(strip_assignment_value "${line#TALARIA_DISPLAY_URL=}")"
+        ;;
+      TALARIA_SERVER_HOST=*)
+        server_host="$(strip_assignment_value "${line#TALARIA_SERVER_HOST=}")"
+        ;;
+      TALARIA_ASSIGNMENT_REFRESH_SECONDS=*)
+        assignment_refresh_seconds="$(normalize_refresh_seconds "$(strip_assignment_value "${line#TALARIA_ASSIGNMENT_REFRESH_SECONDS=}")")"
+        ;;
+    esac
+  done < "$tmp_file"
+  rm -f "$tmp_file"
+  assignment_source="server"
+  return 0
+}
+
 # Reset before sourcing so a stale value from the caller's environment
 # can't be mistaken for a value that came from config.
 TALARIA_SERVER_HOST=
+TALARIA_SERVER_BASE_URL=
+TALARIA_ASSIGNMENT_URL=
 TALARIA_DISPLAY_MODE=
 TALARIA_DISPLAY_URL=
 TALARIA_DEVICE_ID=
+TALARIA_DEVICE_TOKEN=
+TALARIA_PAIRING_CODE=
 
 [ -f "$etc_conf" ] && . "$etc_conf"
 [ -f "$data_conf" ] && . "$data_conf"
 
-configured_mode="${TALARIA_DISPLAY_MODE:-dashboard}"
+configured_mode="${TALARIA_DISPLAY_MODE:-diagnostics}"
 device_id="${TALARIA_DEVICE_ID:-unconfigured}"
 display_url="${TALARIA_DISPLAY_URL:-}"
 server_host="${TALARIA_SERVER_HOST:-}"
+server_base_url="${TALARIA_SERVER_BASE_URL:-}"
+assignment_url="${TALARIA_ASSIGNMENT_URL:-}"
+device_token="${TALARIA_DEVICE_TOKEN:-}"
+assignment_source="local"
+assignment_fetch_status="disabled"
+assignment_refresh_seconds=""
+
+if [ -z "$assignment_url" ] && [ -n "$server_base_url" ]; then
+  assignment_url="${server_base_url%/}/api/workflow/display/assignment.env"
+fi
+
+if [ -n "$assignment_url" ]; then
+  mkdir -p "$(dirname "$mode_state")" 2>/dev/null
+  if fetch_server_assignment; then
+    assignment_fetch_status="ok"
+  else
+    assignment_fetch_status="failed"
+    console_status "TALARIA_ASSIGNMENT_FETCH_FAILED url=$assignment_url device_id=$device_id"
+  fi
+fi
 
 effective_mode="$configured_mode"
 reason=""
@@ -79,15 +211,45 @@ reason=""
 if ! is_valid_mode "$configured_mode"; then
   effective_mode="diagnostics"
   reason="invalid TALARIA_DISPLAY_MODE '$configured_mode'"
-elif [ "$configured_mode" != "diagnostics" ]; then
+elif [ "$configured_mode" = "dashboard" ] || [ "$configured_mode" = "signage" ]; then
   if ! is_http_url "$display_url"; then
     effective_mode="diagnostics"
     reason="TALARIA_DISPLAY_URL is unset or not http(s)"
-  elif [ -n "$server_host" ] && ! $ping_cmd "$server_host" >/dev/null 2>&1; then
-    effective_mode="diagnostics"
-    reason="cannot reach TALARIA_SERVER_HOST ($server_host)"
   fi
 fi
+
+# A fallback (or explicit diagnostics) never hands a URL to the browser
+# supervisor, even if one happens to be configured.
+case "$effective_mode" in
+  pairing)
+    if command -v "$pairing_url_cmd" >/dev/null 2>&1; then
+      state_url="$(
+        TALARIA_DEVICE_ID="$device_id" \
+        TALARIA_SERVER_BASE_URL="$server_base_url" \
+        TALARIA_ASSIGNMENT_URL="$assignment_url" \
+        TALARIA_DEVICE_TOKEN="$device_token" \
+        TALARIA_PAIRING_CODE="$TALARIA_PAIRING_CODE" \
+        TALARIA_ASSIGNMENT_FETCH_STATUS="$assignment_fetch_status" \
+        TALARIA_ASSIGNMENT_REFRESH_SECONDS="${assignment_refresh_seconds:-15}" \
+          "$pairing_url_cmd"
+      )"
+    else
+      effective_mode="diagnostics"
+      state_url=""
+      reason="local pairing page generator missing"
+    fi
+    ;;
+  diagnostics)
+    state_url=""
+    ;;
+  *)
+    if [ -n "$reason" ]; then
+      state_url=""
+    else
+      state_url="$display_url"
+    fi
+    ;;
+esac
 
 mkdir -p "$(dirname "$state_log")" 2>/dev/null
 
@@ -96,29 +258,23 @@ mkdir -p "$(dirname "$state_log")" 2>/dev/null
   echo "device_id: $device_id"
   echo "configured_mode: $configured_mode"
   echo "effective_mode: $effective_mode"
-  echo "display_url: ${display_url:-unset}"
+  if [ "$effective_mode" = "pairing" ]; then
+    echo "display_url: local-pairing"
+  else
+    echo "display_url: ${display_url:-unset}"
+  fi
+  echo "assignment_source: $assignment_source"
+  echo "assignment_fetch_status: $assignment_fetch_status"
+  if [ -n "$assignment_refresh_seconds" ]; then
+    echo "assignment_refresh_seconds: $assignment_refresh_seconds"
+  fi
   if [ -n "$reason" ]; then
     echo "fallback_reason: $reason"
   fi
   echo
 } >> "$state_log" 2>&1
 
-# A fallback (or explicit diagnostics) never hands a URL to the browser
-# supervisor, even if one happens to be configured.
-if [ -n "$reason" ] || [ "$effective_mode" = "diagnostics" ]; then
-  state_url=""
-else
-  state_url="$display_url"
-fi
-
-mkdir -p "$(dirname "$mode_state")" 2>/dev/null
-{
-  echo "EFFECTIVE_MODE=$effective_mode"
-  echo "DISPLAY_URL=$state_url"
-  echo "FALLBACK_REASON=\"$reason\""
-  echo "DEVICE_ID=$device_id"
-  echo "RESOLVED_AT=\"$(date)\""
-} > "$mode_state" 2>/dev/null
+write_mode_state
 
 if [ -n "$reason" ]; then
   run_splash diagnostics "Fallback: $reason"
@@ -128,11 +284,18 @@ else
     diagnostics)
       run_splash diagnostics "Diagnostics mode"
       ;;
+    pairing)
+      run_splash ready "Pairing mode"
+      ;;
     *)
       run_splash ready "$effective_mode ready: $display_url"
       ;;
   esac
-  console_status "TALARIA_MODE_RESOLVED mode=$effective_mode url=${display_url:-none}"
+  if [ "$effective_mode" = "pairing" ]; then
+    console_status "TALARIA_MODE_RESOLVED mode=pairing url=local-pairing"
+  else
+    console_status "TALARIA_MODE_RESOLVED mode=$effective_mode url=${display_url:-none}"
+  fi
 fi
 
 exit 0

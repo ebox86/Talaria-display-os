@@ -1,49 +1,78 @@
 #!/bin/sh
 
-tty="${TALARIA_SPLASH_TTY:-/dev/tty1}"
+tty_list="${TALARIA_SPLASH_TTY:-/dev/tty1 /dev/console}"
+fb_device="${TALARIA_SPLASH_FB:-/dev/fb0}"
+fb_wait_seconds="${TALARIA_SPLASH_FB_WAIT_SECONDS:-5}"
+splash_image="${TALARIA_SPLASH_IMAGE:-/usr/share/talaria/talaria-splash.png}"
 state="${1:-boot}"
 message="${2:-Starting Talaria Display OS}"
 
-if [ ! -w "$tty" ]; then
-  exit 0
-fi
+case "$fb_wait_seconds" in
+  ''|*[!0-9]*) fb_wait_seconds=5 ;;
+esac
 
-draw_frame() {
-  cat > "$tty" <<'EOF'
+write_tty() {
+  target="$1"
+  shift
+
+  [ -w "$target" ] || return 0
+  printf "$@" >> "$target" 2>/dev/null || true
+}
+
+show_image() {
+  wait_elapsed=0
+
+  command -v fbv >/dev/null 2>&1 || return 1
+  [ -r "$splash_image" ] || return 1
+
+  while [ "$wait_elapsed" -le "$fb_wait_seconds" ]; do
+    if [ -e "$fb_device" ]; then
+      FRAMEBUFFER="$fb_device" fbv -c -i -k -y "$splash_image" >/dev/null 2>&1 && return 0
+    fi
+
+    wait_elapsed=$((wait_elapsed + 1))
+    sleep 1
+  done
+
+  return 1
+}
+
+write_text_fallback() {
+  target="$1"
+
+  [ -w "$target" ] || return 0
+  cat > "$target" 2>/dev/null <<'EOF' || true
 [2J[H[?25l
 
 
-          ██████████████████████████████████████████████████
-          ██                                              ██
-          ██     ████████╗ █████╗ ██╗      █████╗        ██
-          ██     ╚══██╔══╝██╔══██╗██║     ██╔══██╗       ██
-          ██        ██║   ███████║██║     ███████║       ██
-          ██        ██║   ██╔══██║██║     ██╔══██║       ██
-          ██        ██║   ██║  ██║███████╗██║  ██║       ██
-          ██        ╚═╝   ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝       ██
-          ██                                              ██
-          ██               DISPLAY OS                     ██
-          ██                                              ██
-          ██████████████████████████████████████████████████
+          TALARIA DISPLAY OS
 
 EOF
 }
 
+draw_fallback() {
+  for tty in $tty_list; do
+    write_text_fallback "$tty"
+  done
+}
+
 write_status() {
-  printf '\033[18;11H%-58s' "Status: $message" > "$tty"
-  printf '\033[19;11H%-58s' "Stage:  $state" > "$tty"
-  printf '\033[21;11H%-58s' "This display will continue automatically." > "$tty"
+  for tty in $tty_list; do
+    write_tty "$tty" '\033[17;11H%-58s' "Status: $message"
+    write_tty "$tty" '\033[18;11H%-58s' "Stage:  $state"
+    write_tty "$tty" '\033[20;11H%-58s' "This display will continue automatically."
+  done
 }
 
 case "$state" in
-  boot|clear)
-    draw_frame
-    write_status
-    ;;
   hide)
-    printf '\033[2J\033[H\033[?25h' > "$tty"
+    for tty in $tty_list; do
+      write_tty "$tty" '\033[2J\033[H\033[?25h'
+    done
     ;;
   *)
+    show_image && exit 0
+    draw_fallback
     write_status
     ;;
 esac

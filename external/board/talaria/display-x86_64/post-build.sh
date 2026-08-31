@@ -40,13 +40,37 @@ copy_grub_boot_img() {
   echo "Staged GRUB BIOS boot sector -> $BINARIES_DIR/boot.img"
 }
 
+ensure_wpe_default_backend() {
+  local candidate rel_target
+  local -a candidates=(
+    "$target_dir/usr/lib/libWPEBackend-fdo-1.0.so.1"
+    "$target_dir/usr/lib/libWPEBackend-fdo-1.0.so"
+  )
+
+  if [[ -e "$target_dir/usr/lib/libWPEBackend-default.so" ]]; then
+    return 0
+  fi
+
+  for candidate in "${candidates[@]}" "$target_dir"/usr/lib/libWPEBackend-fdo-1.0.so.*; do
+    if [[ -e "$candidate" ]]; then
+      rel_target="$(basename "$candidate")"
+      ln -s "$rel_target" "$target_dir/usr/lib/libWPEBackend-default.so"
+      echo "Linked WPE default backend -> /usr/lib/$rel_target"
+      return 0
+    fi
+  done
+}
+
 mkdir -p "$target_dir/data/talaria"
 mkdir -p "$target_dir/boot/grub"
+mkdir -p "$target_dir/usr/share/talaria"
 cp -f "$board_dir/grub-bios.cfg" "$target_dir/boot/grub/grub.cfg"
+cp -f "$board_dir/assets/talaria-splash.png" "$target_dir/usr/share/talaria/talaria-splash.png"
 
 find "$target_dir/etc/init.d" -maxdepth 1 -type f -name 'S*talaria-*' -exec chmod 0755 {} +
 find "$target_dir/usr/bin" -maxdepth 1 -type f -name 'talaria-*' -exec chmod 0755 {} +
 
 copy_grub_boot_img
+ensure_wpe_default_backend
 
 echo "Talaria Display OS rootfs prepared at $target_dir"

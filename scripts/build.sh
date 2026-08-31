@@ -8,6 +8,63 @@ output_dir="${OUTPUT_DIR:-$repo_root/output}"
 dl_dir="${BR2_DL_DIR:-$repo_root/dl}"
 defconfig="${DEFCONFIG:-talaria_display_x86_64_defconfig}"
 
+repair_grub2_image_cache() {
+  local config_file="$output_dir/.config"
+  local -a image_stamps=()
+
+  [[ -f "$config_file" ]] || return 0
+  grep -qx 'BR2_TARGET_GRUB2_I386_PC=y' "$config_file" || return 0
+  [[ ! -f "$output_dir/images/grub.img" ]] || return 0
+
+  # CI restores output/build but not output/images. If a previous cache
+  # contains grub2's image-install stamp, Buildroot can believe grub.img
+  # already exists even though genimage will later fail looking for it.
+  # Remove only that stamp so the normal grub2 install-images step
+  # recreates output/images/grub.img during the full build.
+  shopt -s nullglob
+  image_stamps=("$output_dir"/build/grub2-*/.stamp_images_installed)
+  shopt -u nullglob
+
+  if ((${#image_stamps[@]} > 0)); then
+    rm -f "${image_stamps[@]}"
+    echo "Invalidated cached GRUB2 image-install stamp; output/images/grub.img will be regenerated."
+  fi
+}
+
+repair_browser_runtime_cache() {
+  local config_file="$output_dir/.config"
+  local target_dir="$output_dir/target"
+  local -a stamps=()
+
+  [[ -f "$config_file" ]] || return 0
+
+  if grep -qx 'BR2_PACKAGE_COG_PLATFORM_FDO=y' "$config_file" \
+    && [[ -d "$output_dir/build" ]] \
+    && [[ ! -e "$target_dir/usr/lib/cog/modules/libcogplatform-wl.so" ]] \
+    && ! find "$target_dir/usr/lib" -type f -name 'libcogplatform-wl.so*' -print -quit 2>/dev/null | grep -q .; then
+    shopt -s nullglob
+    stamps=("$output_dir"/build/cog-*/.stamp_configured "$output_dir"/build/cog-*/.stamp_built "$output_dir"/build/cog-*/.stamp_target_installed "$output_dir"/build/cog-*/.stamp_staging_installed)
+    shopt -u nullglob
+    if ((${#stamps[@]} > 0)); then
+      rm -f "${stamps[@]}"
+      echo "Invalidated cached Cog build/install stamps; Wayland platform module will be regenerated."
+    fi
+  fi
+
+  if grep -qx 'BR2_PACKAGE_WPEBACKEND_FDO=y' "$config_file" \
+    && [[ -d "$output_dir/build" ]] \
+    && [[ ! -e "$target_dir/usr/lib/libWPEBackend-fdo-1.0.so" ]] \
+    && ! find "$target_dir/usr/lib" -type f -name 'libWPEBackend-fdo-1.0.so*' -print -quit 2>/dev/null | grep -q .; then
+    shopt -s nullglob
+    stamps=("$output_dir"/build/wpebackend-fdo-*/.stamp_configured "$output_dir"/build/wpebackend-fdo-*/.stamp_built "$output_dir"/build/wpebackend-fdo-*/.stamp_target_installed "$output_dir"/build/wpebackend-fdo-*/.stamp_staging_installed)
+    shopt -u nullglob
+    if ((${#stamps[@]} > 0)); then
+      rm -f "${stamps[@]}"
+      echo "Invalidated cached wpebackend-fdo build/install stamps; WPE backend library will be regenerated."
+    fi
+  fi
+}
+
 if [[ ! -d "$buildroot_dir" ]]; then
   echo "Buildroot was not found at $buildroot_dir" >&2
   echo "Run ./scripts/bootstrap-buildroot.sh or set BUILDROOT_DIR." >&2
@@ -37,7 +94,14 @@ if grep -q '^BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES=' "$repo_root/external/confi
   "$repo_root/scripts/verify-kernel-video-config.sh"
 fi
 
+repair_grub2_image_cache
+repair_browser_runtime_cache
+
 echo "Building Talaria Display OS"
 make -C "$buildroot_dir" O="$output_dir"
+
+if grep -q '^BR2_PACKAGE_WPEWEBKIT=y' "$repo_root/external/configs/$defconfig" 2>/dev/null; then
+  "$repo_root/scripts/verify-browser-runtime-files.sh"
+fi
 
 echo "Build complete. Images are under: $output_dir/images"

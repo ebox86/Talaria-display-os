@@ -6,15 +6,15 @@ This repo is the implementation workspace for Talaria display appliances: produc
 
 ## Current Scope
 
-Phase 1 is a text/network bring-up image:
+Phase 1 is a display/network bring-up image:
 
 ```text
-old PC boots USB/rootfs -> console splash -> BusyBox init -> wired DHCP -> logs config/network state
+old PC boots USB/rootfs -> framebuffer PNG splash -> BusyBox init -> wired DHCP -> logs config/network state
 ```
 
-Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf` and `/data/talaria/display.conf`, falls back to `diagnostics` on any invalid or unreachable config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
+Phase 3 adds mode resolution and browser supervision on top of that: the image decides an effective display mode (`dashboard`/`signage`/`diagnostics`) from `/etc/talaria/display.conf`, `/data/talaria/display.conf`, and an optional server assignment endpoint, defaults fresh/unconfigured devices to the baked Talaria logo, falls back to `diagnostics` on invalid config, retries without a reboot, and supervises a WPE/Cog kiosk browser against the resolved mode (launch, relaunch on crash, stop on fallback). See [`docs/display-runtime-design.md`](docs/display-runtime-design.md).
 
-The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). The WPE/Cog/Mesa Buildroot package wiring has now been validated by a real from-source CI build (PR #4, run 4): the defconfig resolves cleanly, WPEWebKit/Cog/Mesa compile, and the resulting image boots in QEMU and correctly falls back to the diagnostics screen when no Talaria server is reachable. `scripts/verify-browser-packages.sh` still catches an obviously wrong or renamed symbol fast, before paying the multi-hour build cost again. What's still unproven is real hardware: no image has been flashed to or booted on an actual target machine yet, and the `dashboard`/`signage` browser path itself (WPE WebKit actually rendering the Talaria dashboard) has only been exercised against the diagnostics fallback, not a real server. See `docs/hardware-inventory.md`.
+The mode-resolution and browser-supervision shell logic is implemented and unit-tested (`scripts/test-mode-resolve.sh`, `scripts/test-browser-supervise.sh`). The WPE/Cog/Mesa Buildroot package wiring has been validated by real from-source CI builds: the defconfig resolves cleanly, WPEWebKit/Cog/Mesa compile, and the resulting image boots in QEMU. The browser path has also rendered a local HTML/CSS/font test page in a VM. `scripts/verify-browser-packages.sh` still catches an obviously wrong or renamed symbol fast, before paying the multi-hour build cost again. What's still unproven is real hardware and rendering the real Talaria dashboard/signage pages from the app/server stack. See `docs/hardware-inventory.md`.
 
 ## Repo Layout
 
@@ -31,6 +31,7 @@ scripts/
   save-defconfig.sh
   test-mode-resolve.sh
   test-browser-supervise.sh
+  test-browser-init.sh
   verify-browser-packages.sh
   verify-kernel-video-config.sh
 external/
@@ -108,7 +109,7 @@ Override paths when needed:
 BUILDROOT_DIR=/path/to/buildroot OUTPUT_DIR=/path/to/output ./scripts/build.sh
 ```
 
-The expected Phase 1 disk image is:
+The expected disk image is:
 
 ```text
 output/images/disk.img
@@ -177,15 +178,15 @@ sudo ./scripts/flash-usb.sh /dev/sdX output/images/<image>.img
 
 The flashing script is intentionally defensive and requires explicit confirmation.
 
-## First Milestone
+## First Hardware Milestone
 
 Success for the first real milestone:
 
 ```text
-Old PC boots -> shows splash -> gets DHCP -> pings Talaria server -> writes /data/talaria/phase1.log
+Old PC boots -> shows splash -> gets DHCP -> writes /data/talaria/phase1.log -> launches assigned browser content when configured
 ```
 
-Browser-stack code (mode resolution, supervision) exists ahead of this milestone, but do not start tuning it against real content/hardware until Phase 1 boot is proven true on at least one old target workstation.
+Browser-stack code, mode resolution, assignment polling, and supervision are now part of the image. The next milestone is proving the same path on at least one real target workstation, then wiring the matching assignment endpoint in edge-api/workbench once those branches are current.
 
 ## Useful References
 
